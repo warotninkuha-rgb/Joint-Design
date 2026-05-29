@@ -23,6 +23,25 @@
             font-family: 'Times New Roman', Times, serif;
             font-style: italic;
         }
+        
+        /* เพิ่มตั้งค่ากระดาษสำหรับการพิมพ์ A4 */
+        @page {
+            size: A4;
+            margin: 1.5cm;
+        }
+        @media print {
+            body {
+                background-color: #ffffff;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .shadow-sm, .shadow-md, .shadow-lg {
+                box-shadow: none !important;
+            }
+            input, select {
+                border-color: #d1d5db !important;
+            }
+        }
     </style>
 </head>
 <body>
@@ -45,6 +64,13 @@
         const IconJoint = () => (
             <svg className="w-8 h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8h16M4 16h16M8 4v16M16 4v16"></path>
+            </svg>
+        );
+
+        // --- เพิ่ม Icon สำหรับปุ่ม Print ---
+        const IconPrinter = () => (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path>
             </svg>
         );
 
@@ -138,256 +164,42 @@
                 </span>
             );
 
-            // --- Tab Contents ---
-            const renderTabContent = () => {
-                switch(activeTab) {
-                    case 'summary':
-                        return (
-                            <div className="space-y-6">
-                                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                                    <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">ตารางเปรียบเทียบกำลังรับแรงเฉือนในข้อต่อ</h3>
-                                    <div className="overflow-x-auto">
-                                        <table className="min-w-full divide-y divide-gray-200">
-                                            <thead className="bg-gray-50">
-                                                <tr>
-                                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ประเภทข้อต่อ (การยึดรั้ง)</th>
-                                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">แรงเฉือนที่เกิดขึ้น V<sub>j</sub> (Ton)</th>
-                                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">กำลังรับได้ &phi;V<sub>n</sub> (Ton)</th>
-                                                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">สถานะการออกแบบ (V<sub>j</sub> &le; &phi;V<sub>n</sub>)</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="bg-white divide-y divide-gray-200">
-                                                <tr>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">ยึดรั้งจากคาน 4 ด้าน (Interior)</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-red-600">{results.vjInt.toFixed(2)}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-blue-600">{results.phiVn4.toFixed(2)}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
-                                                        <StatusBadge isPass={results.vjInt <= results.phiVn4} />
-                                                    </td>
-                                                </tr>
-                                                <tr className="bg-gray-50">
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">ยึดรั้งจากคาน 2-3 ด้าน (Exterior)</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-red-600">{results.vjInt.toFixed(2)}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-blue-600">{results.phiVn3.toFixed(2)}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
-                                                        <StatusBadge isPass={results.vjInt <= results.phiVn3} />
-                                                    </td>
-                                                </tr>
-                                                <tr>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">ข้อต่ออื่นๆ (Corner/Roof)</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-red-600">{results.vjExt.toFixed(2)}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-blue-600">{results.phiVnOther.toFixed(2)}</td>
-                                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
-                                                        <StatusBadge isPass={results.vjExt <= results.phiVnOther} />
-                                                    </td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-
-                                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                                    <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">สรุปปริมาณเหล็กปลอกในข้อต่อ</h3>
-                                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-md">
-                                        <div>
-                                            <p className="text-sm text-gray-600">ต้องการขั้นต่ำ (A<sub>v,min</sub>)</p>
-                                            <p className="text-xl font-bold">{results.avMin.toFixed(2)} <span className="text-sm font-normal">cm&sup2;/ระยะ s</span></p>
-                                        </div>
-                                        <div className="text-2xl text-gray-400">&le;</div>
-                                        <div>
-                                            <p className="text-sm text-gray-600">จัดให้จริง ({inputs.tieLegs}-DB{inputs.tieSize} @{inputs.tieSpacing})</p>
-                                            <p className="text-xl font-bold text-blue-600">{results.avProv.toFixed(2)} <span className="text-sm font-normal">cm&sup2;</span></p>
-                                        </div>
-                                        <div>
-                                            <StatusBadge isPass={results.avProv >= results.avMin} />
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        );
-
-                    case 'vj':
-                        return (
-                            <div className="space-y-6">
-                                {/* ส่วนที่ 1: ข้อต่อภายใน */}
-                                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                                    <h3 className="text-lg font-bold text-gray-800 mb-2 border-b pb-2">1. แรงเฉือนข้อต่อภายใน (Interior / Continuous Joint)</h3>
-                                    <p className="text-sm text-gray-500 mb-4">* นำไปเปรียบเทียบกับข้อต่อแบบยึดรั้ง 4 ด้าน และ 2-3 ด้าน</p>
-                                    
-                                    <div className="bg-yellow-50 p-4 rounded-md mb-6 border border-yellow-200 text-center">
-                                        <p className="text-xl font-bold text-yellow-800 math-font">
-                                            V<sub>j,int</sub> = A<sub>s1</sub> f<sub>y</sub> + A<sub>s2</sub> f<sub>y</sub> - V<sub>col</sub>
-                                        </p>
-                                    </div>
-                                    
-                                    <div className="space-y-4 text-gray-700">
-                                        <div className="flex justify-between border-b border-gray-100 pb-2">
-                                            <span>แรงดึงจากเหล็กบน (A<sub>s1</sub> f<sub>y</sub>)</span>
-                                            <span className="font-mono">({results.as1.toFixed(2)} &times; {inputs.fy}) / 1000 = <strong className="text-blue-600">{results.forceRebar1.toFixed(2)} Ton</strong></span>
-                                        </div>
-                                        <div className="flex justify-between border-b border-gray-100 pb-2">
-                                            <span>แรงดึง/อัดจากเหล็กล่าง (A<sub>s2</sub> f<sub>y</sub>)</span>
-                                            <span className="font-mono">({results.as2.toFixed(2)} &times; {inputs.fy}) / 1000 = <strong className="text-blue-600">{results.forceRebar2.toFixed(2)} Ton</strong></span>
-                                        </div>
-                                        <div className="flex justify-between border-b border-gray-100 pb-2">
-                                            <span>แรงเฉือนจากเสา (V<sub>col</sub>)</span>
-                                            <span className="font-mono text-red-600">- {inputs.vCol.toFixed(2)} Ton</span>
-                                        </div>
-                                        <div className="flex justify-between pt-2 text-lg font-bold">
-                                            <span>แรงเฉือนสุทธิในข้อต่อ (V<sub>j,int</sub>)</span>
-                                            <span className="text-red-600">{results.vjInt.toFixed(2)} Ton</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* ส่วนที่ 2: ข้อต่อภายนอก */}
-                                <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                                    <h3 className="text-lg font-bold text-gray-800 mb-2 border-b pb-2">2. แรงเฉือนข้อต่อภายนอก (Exterior / Corner / Roof Joint)</h3>
-                                    <p className="text-sm text-gray-500 mb-4">* นำไปเปรียบเทียบกับข้อต่ออื่นๆ (Corner/Roof)</p>
-                                    
-                                    <div className="bg-blue-50 p-4 rounded-md mb-6 border border-blue-200 text-center">
-                                        <p className="text-xl font-bold text-blue-800 math-font">
-                                            V<sub>j,ext</sub> = max(A<sub>s1</sub>, A<sub>s2</sub>) f<sub>y</sub> - V<sub>col</sub>
-                                        </p>
-                                    </div>
-                                    
-                                    <div className="space-y-4 text-gray-700">
-                                        <div className="flex justify-between border-b border-gray-100 pb-2">
-                                            <span>แรงจากเหล็กคานฝั่งที่มากที่สุด</span>
-                                            <span className="font-mono">(max({results.as1.toFixed(2)}, {results.as2.toFixed(2)}) &times; {inputs.fy}) / 1000 = <strong className="text-blue-600">{results.maxForceRebar.toFixed(2)} Ton</strong></span>
-                                        </div>
-                                        <div className="flex justify-between border-b border-gray-100 pb-2">
-                                            <span>แรงเฉือนจากเสา (V<sub>col</sub>)</span>
-                                            <span className="font-mono text-red-600">- {inputs.vCol.toFixed(2)} Ton</span>
-                                        </div>
-                                        <div className="flex justify-between pt-2 text-lg font-bold">
-                                            <span>แรงเฉือนสุทธิในข้อต่อ (V<sub>j,ext</sub>)</span>
-                                            <span className="text-red-600">{results.vjExt.toFixed(2)} Ton</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        );
-
-                    case 'vn':
-                        return (
-                            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                                <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">การคำนวณกำลังรับแรงเฉือนระบุ (V<sub>n</sub>)</h3>
-                                
-                                <div className="mb-6 bg-gray-50 p-4 rounded-md">
-                                    <p className="mb-2"><strong>พื้นที่หน้าตัดข้อต่อ (A<sub>j</sub>)</strong> = ความกว้าง(b) &times; ความลึก(h)</p>
-                                    <p className="font-mono text-blue-600">A<sub>j</sub> = {inputs.colWidth} &times; {inputs.colDepth} = {results.aj.toFixed(2)} cm&sup2;</p>
-                                </div>
-
-                                <div className="space-y-6">
-                                    <div className="border border-gray-200 rounded-lg p-4">
-                                        <h4 className="font-bold text-gray-700 mb-2">1. ข้อต่อได้รับการยึดรั้ง 4 ด้าน (Interior Joint)</h4>
-                                        <p className="math-font text-lg text-center bg-yellow-50 p-2 rounded mb-2">V<sub>n</sub> = 5.4 &radic;f'<sub>c</sub> A<sub>j</sub></p>
-                                        <p className="font-mono text-sm text-gray-600 text-center mb-2">V<sub>n</sub> = (5.4 &times; &radic;{inputs.fc} &times; {results.aj}) / 1000</p>
-                                        <div className="flex justify-between font-bold">
-                                            <span>V<sub>n</sub> = <span className="text-blue-600">{(results.vn4Sides).toFixed(2)} Ton</span></span>
-                                            <span>&phi;V<sub>n</sub> (&phi;={results.phi}) = <span className="text-green-600">{results.phiVn4.toFixed(2)} Ton</span></span>
-                                        </div>
-                                    </div>
-
-                                    <div className="border border-gray-200 rounded-lg p-4">
-                                        <h4 className="font-bold text-gray-700 mb-2">2. ข้อต่อได้รับการยึดรั้ง 2 หรือ 3 ด้าน (Exterior Joint)</h4>
-                                        <p className="math-font text-lg text-center bg-yellow-50 p-2 rounded mb-2">V<sub>n</sub> = 3.9 &radic;f'<sub>c</sub> A<sub>j</sub></p>
-                                        <p className="font-mono text-sm text-gray-600 text-center mb-2">V<sub>n</sub> = (3.9 &times; &radic;{inputs.fc} &times; {results.aj}) / 1000</p>
-                                        <div className="flex justify-between font-bold">
-                                            <span>V<sub>n</sub> = <span className="text-blue-600">{(results.vn3Sides).toFixed(2)} Ton</span></span>
-                                            <span>&phi;V<sub>n</sub> (&phi;={results.phi}) = <span className="text-green-600">{results.phiVn3.toFixed(2)} Ton</span></span>
-                                        </div>
-                                    </div>
-
-                                    <div className="border border-gray-200 rounded-lg p-4">
-                                        <h4 className="font-bold text-gray-700 mb-2">3. ข้อต่ออื่นๆ (Corner / Roof Joint)</h4>
-                                        <p className="math-font text-lg text-center bg-yellow-50 p-2 rounded mb-2">V<sub>n</sub> = 3.2 &radic;f'<sub>c</sub> A<sub>j</sub></p>
-                                        <p className="font-mono text-sm text-gray-600 text-center mb-2">V<sub>n</sub> = (3.2 &times; &radic;{inputs.fc} &times; {results.aj}) / 1000</p>
-                                        <div className="flex justify-between font-bold">
-                                            <span>V<sub>n</sub> = <span className="text-blue-600">{(results.vnOther).toFixed(2)} Ton</span></span>
-                                            <span>&phi;V<sub>n</sub> (&phi;={results.phi}) = <span className="text-green-600">{results.phiVnOther.toFixed(2)} Ton</span></span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        );
-
-                    case 'av':
-                        return (
-                            <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                                <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">เหล็กปลอกขั้นต่ำ (Minimum Transverse Reinforcement)</h3>
-                                
-                                <div className="bg-slate-800 text-white p-4 rounded-md mb-6 text-center">
-                                    <p className="text-xl math-font">
-                                        A<sub>v,min</sub> = 3.5 (b<sub>w</sub> &times; s) / f<sub>yt</sub>
-                                    </p>
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="border p-4 rounded-lg bg-gray-50">
-                                        <h4 className="font-bold text-gray-700 mb-4 text-center">ความต้องการขั้นต่ำ</h4>
-                                        <ul className="space-y-2 text-sm mb-4">
-                                            <li>b<sub>w</sub> (min(b, h)) = {results.bw} cm</li>
-                                            <li>s (ระยะห่างเหล็กปลอก) = {inputs.tieSpacing} cm</li>
-                                            <li>f<sub>yt</sub> (กำลังครากเหล็กปลอก) = {inputs.fyt} ksc</li>
-                                        </ul>
-                                        <div className="border-t pt-2 text-center">
-                                            <p className="text-gray-600 text-sm">A<sub>v,min</sub> = 3.5 &times; ({results.bw} &times; {inputs.tieSpacing}) / {inputs.fyt}</p>
-                                            <p className="text-xl font-bold text-red-600 mt-2">{results.avMin.toFixed(2)} cm&sup2;</p>
-                                        </div>
-                                    </div>
-
-                                    <div className="border p-4 rounded-lg bg-blue-50 border-blue-200">
-                                        <h4 className="font-bold text-gray-700 mb-4 text-center">ปริมาณที่จัดให้จริง</h4>
-                                        <ul className="space-y-2 text-sm mb-4">
-                                            <li>ขนาดเหล็กปลอก = DB{inputs.tieSize} mm</li>
-                                            <li>จำนวนขา (Legs) = {inputs.tieLegs} ขา</li>
-                                            <li>พื้นที่เหล็ก 1 เส้น = {((Math.PI * Math.pow(inputs.tieSize/10, 2))/4).toFixed(3)} cm&sup2;</li>
-                                        </ul>
-                                        <div className="border-t border-blue-200 pt-2 text-center">
-                                            <p className="text-gray-600 text-sm">A<sub>v,provided</sub> = {inputs.tieLegs} &times; {((Math.PI * Math.pow(inputs.tieSize/10, 2))/4).toFixed(3)}</p>
-                                            <p className="text-xl font-bold text-blue-600 mt-2">{results.avProv.toFixed(2)} cm&sup2;</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <div className="mt-6 flex justify-center">
-                                     <div className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold text-lg ${results.avProv >= results.avMin ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                        {results.avProv >= results.avMin ? <IconCheck /> : <IconCross />}
-                                        {results.avProv >= results.avMin ? 'ปริมาณเหล็กปลอกผ่านเกณฑ์ (OK)' : 'ปริมาณเหล็กปลอกไม่เพียงพอ (NG)'}
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                }
-            };
-
             return (
-                <div className="min-h-screen pb-12">
+                <div className="min-h-screen pb-12 print:pb-0 print:bg-white">
                     {/* Header */}
-                    <header className="bg-slate-800 text-white shadow-lg">
-                        <div className="max-w-5xl mx-auto px-4 py-5 flex items-center gap-4">
-                            <div className="p-2 bg-slate-700 rounded-lg">
-                                <IconJoint />
+                    <header className="bg-slate-800 text-white shadow-lg print:shadow-none print:bg-white print:text-slate-800 print:border-b-2 print:border-slate-800">
+                        <div className="max-w-5xl mx-auto px-4 py-5 flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <div className="p-2 bg-slate-700 rounded-lg print:bg-transparent print:text-slate-800 print:p-0">
+                                    <IconJoint />
+                                </div>
+                                <div>
+                                    <h1 className="text-2xl font-bold">ACI 318-25 Joint Strength</h1>
+                                    <p className="text-slate-300 text-sm print:text-slate-600">โปรแกรมคำนวณกำลังรับแรงเฉือนในข้อต่อเสา-คาน</p>
+                                </div>
                             </div>
-                            <div>
-                                <h1 className="text-2xl font-bold">ACI 318-25 Joint Strength</h1>
-                                <p className="text-slate-300 text-sm">โปรแกรมคำนวณกำลังรับแรงเฉือนในข้อต่อเสา-คาน</p>
-                            </div>
+                            
+                            {/* ปุ่ม Print รายงานซ่อนเวลาพิมพ์จริง */}
+                            <button 
+                                onClick={() => window.print()} 
+                                className="print:hidden bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow-sm cursor-pointer"
+                            >
+                                <IconPrinter />
+                                พิมพ์รายงาน (A4)
+                            </button>
                         </div>
                     </header>
 
-                    <main className="max-w-5xl mx-auto px-4 mt-6">
+                    <main className="max-w-5xl mx-auto px-4 mt-6 print:mt-4 print:px-0">
                         {/* --- Section 1: Global Inputs --- */}
-                        <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden mb-6">
-                            <div className="bg-blue-50 border-b border-blue-100 px-6 py-3">
-                                <h2 className="font-bold text-blue-800 flex items-center gap-2">
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                        <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden mb-6 print:shadow-none print:border-none print:mb-6">
+                            <div className="bg-blue-50 border-b border-blue-100 px-6 py-3 print:bg-transparent print:border-b-2 print:border-slate-800 print:px-0">
+                                <h2 className="font-bold text-blue-800 flex items-center gap-2 print:text-slate-800">
+                                    <svg className="w-5 h-5 print:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
                                     ข้อมูลนำเข้า (Global Inputs)
                                 </h2>
                             </div>
-                            <div className="p-6 grid grid-cols-1 md:grid-cols-4 gap-6">
+                            <div className="p-6 grid grid-cols-1 md:grid-cols-4 gap-6 print:px-0 print:py-4">
                                 {/* Column 1: Material */}
                                 <div className="space-y-4">
                                     <h3 className="text-sm font-semibold text-gray-500 uppercase border-b pb-1">วัสดุ (Material)</h3>
@@ -437,7 +249,7 @@
                                                 </select>
                                             </div>
                                         </div>
-                                        <div className="text-[12px] text-right text-blue-700 font-mono bg-blue-100/50 p-1.5 rounded border border-blue-100">
+                                        <div className="text-[12px] text-right text-blue-700 font-mono bg-blue-100/50 p-1.5 rounded border border-blue-100 print:bg-transparent print:border-none print:p-0">
                                             A<sub>s1</sub> = {results.as1.toFixed(2)} cm&sup2;
                                         </div>
                                     </div>
@@ -461,7 +273,7 @@
                                                 </select>
                                             </div>
                                         </div>
-                                        <div className="text-[12px] text-right text-blue-700 font-mono bg-blue-100/50 p-1.5 rounded border border-blue-100">
+                                        <div className="text-[12px] text-right text-blue-700 font-mono bg-blue-100/50 p-1.5 rounded border border-blue-100 print:bg-transparent print:border-none print:p-0">
                                             A<sub>s2</sub> = {results.as2.toFixed(2)} cm&sup2;
                                         </div>
                                     </div>
@@ -498,9 +310,9 @@
                         </div>
 
                         {/* --- Section 2 & 3: Tabs and Contents --- */}
-                        <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
+                        <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden print:shadow-none print:border-none print:overflow-visible">
                             {/* Tabs Header */}
-                            <div className="flex overflow-x-auto border-b border-gray-200 bg-gray-50">
+                            <div className="flex overflow-x-auto border-b border-gray-200 bg-gray-50 print:hidden">
                                 <button 
                                     onClick={() => setActiveTab('summary')}
                                     className={`px-6 py-4 text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'summary' ? 'text-blue-600 border-b-2 border-blue-600 bg-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
@@ -527,9 +339,228 @@
                                 </button>
                             </div>
 
-                            {/* Tab Body */}
-                            <div className="p-6 bg-gray-50/50">
-                                {renderTabContent()}
+                            {/* Tab Body (แสดงทั้งหมดเมื่อสั่งพิมพ์) */}
+                            <div className="p-6 bg-gray-50/50 print:p-0 print:bg-transparent">
+                                
+                                {/* 1. Summary Content */}
+                                <div className={activeTab === 'summary' ? 'block' : 'hidden print:block print:mb-8 print:break-inside-avoid'}>
+                                    <div className="space-y-6">
+                                        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                                            <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2 print:border-slate-800">ตารางเปรียบเทียบกำลังรับแรงเฉือนในข้อต่อ</h3>
+                                            <div className="overflow-x-auto">
+                                                <table className="min-w-full divide-y divide-gray-200">
+                                                    <thead className="bg-gray-50 print:bg-gray-100">
+                                                        <tr>
+                                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider print:text-black">ประเภทข้อต่อ (การยึดรั้ง)</th>
+                                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider print:text-black">แรงเฉือนที่เกิดขึ้น V<sub>j</sub> (Ton)</th>
+                                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider print:text-black">กำลังรับได้ &phi;V<sub>n</sub> (Ton)</th>
+                                                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider print:text-black">สถานะการออกแบบ (V<sub>j</sub> &le; &phi;V<sub>n</sub>)</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="bg-white divide-y divide-gray-200">
+                                                        <tr>
+                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">ยึดรั้งจากคาน 4 ด้าน (Interior)</td>
+                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-red-600">{results.vjInt.toFixed(2)}</td>
+                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-blue-600">{results.phiVn4.toFixed(2)}</td>
+                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                                                                <StatusBadge isPass={results.vjInt <= results.phiVn4} />
+                                                            </td>
+                                                        </tr>
+                                                        <tr className="bg-gray-50">
+                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">ยึดรั้งจากคาน 2-3 ด้าน (Exterior)</td>
+                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-red-600">{results.vjInt.toFixed(2)}</td>
+                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-blue-600">{results.phiVn3.toFixed(2)}</td>
+                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                                                                <StatusBadge isPass={results.vjInt <= results.phiVn3} />
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">ข้อต่ออื่นๆ (Corner/Roof)</td>
+                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-red-600">{results.vjExt.toFixed(2)}</td>
+                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-blue-600">{results.phiVnOther.toFixed(2)}</td>
+                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                                                                <StatusBadge isPass={results.vjExt <= results.phiVnOther} />
+                                                            </td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                                            <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2 print:border-slate-800">สรุปปริมาณเหล็กปลอกในข้อต่อ</h3>
+                                            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-md print:bg-transparent print:border print:border-gray-300">
+                                                <div>
+                                                    <p className="text-sm text-gray-600">ต้องการขั้นต่ำ (A<sub>v,min</sub>)</p>
+                                                    <p className="text-xl font-bold">{results.avMin.toFixed(2)} <span className="text-sm font-normal">cm&sup2;/ระยะ s</span></p>
+                                                </div>
+                                                <div className="text-2xl text-gray-400">&le;</div>
+                                                <div>
+                                                    <p className="text-sm text-gray-600">จัดให้จริง ({inputs.tieLegs}-DB{inputs.tieSize} @{inputs.tieSpacing})</p>
+                                                    <p className="text-xl font-bold text-blue-600">{results.avProv.toFixed(2)} <span className="text-sm font-normal">cm&sup2;</span></p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm text-gray-600">&nbsp;</p>
+                                                    <StatusBadge isPass={results.avProv >= results.avMin} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* 2. Vj Content */}
+                                <div className={activeTab === 'vj' ? 'block' : 'hidden print:block print:mb-8 print:break-inside-avoid'}>
+                                    <div className="space-y-6">
+                                        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                                            <h3 className="text-lg font-bold text-gray-800 mb-2 border-b pb-2 print:border-slate-800">แรงเฉือนข้อต่อภายใน (Interior / Continuous Joint)</h3>
+                                            <p className="text-sm text-gray-500 mb-4">* นำไปเปรียบเทียบกับข้อต่อแบบยึดรั้ง 4 ด้าน และ 2-3 ด้าน</p>
+                                            
+                                            <div className="bg-yellow-50 p-4 rounded-md mb-6 border border-yellow-200 text-center print:border-gray-300">
+                                                <p className="text-xl font-bold text-yellow-800 math-font">
+                                                    V<sub>j,int</sub> = A<sub>s1</sub> f<sub>y</sub> + A<sub>s2</sub> f<sub>y</sub> - V<sub>col</sub>
+                                                </p>
+                                            </div>
+                                            
+                                            <div className="space-y-4 text-gray-700">
+                                                <div className="flex justify-between border-b border-gray-100 pb-2">
+                                                    <span>แรงดึงจากเหล็กบน (A<sub>s1</sub> f<sub>y</sub>)</span>
+                                                    <span className="font-mono">({results.as1.toFixed(2)} &times; {inputs.fy}) / 1000 = <strong className="text-blue-600">{results.forceRebar1.toFixed(2)} Ton</strong></span>
+                                                </div>
+                                                <div className="flex justify-between border-b border-gray-100 pb-2">
+                                                    <span>แรงดึง/อัดจากเหล็กล่าง (A<sub>s2</sub> f<sub>y</sub>)</span>
+                                                    <span className="font-mono">({results.as2.toFixed(2)} &times; {inputs.fy}) / 1000 = <strong className="text-blue-600">{results.forceRebar2.toFixed(2)} Ton</strong></span>
+                                                </div>
+                                                <div className="flex justify-between border-b border-gray-100 pb-2">
+                                                    <span>แรงเฉือนจากเสา (V<sub>col</sub>)</span>
+                                                    <span className="font-mono text-red-600">- {inputs.vCol.toFixed(2)} Ton</span>
+                                                </div>
+                                                <div className="flex justify-between pt-2 text-lg font-bold">
+                                                    <span>แรงเฉือนสุทธิในข้อต่อ (V<sub>j,int</sub>)</span>
+                                                    <span className="text-red-600">{results.vjInt.toFixed(2)} Ton</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                                            <h3 className="text-lg font-bold text-gray-800 mb-2 border-b pb-2 print:border-slate-800">แรงเฉือนข้อต่อภายนอก (Exterior / Corner / Roof Joint)</h3>
+                                            <p className="text-sm text-gray-500 mb-4">* นำไปเปรียบเทียบกับข้อต่ออื่นๆ (Corner/Roof)</p>
+                                            
+                                            <div className="bg-blue-50 p-4 rounded-md mb-6 border border-blue-200 text-center print:border-gray-300">
+                                                <p className="text-xl font-bold text-blue-800 math-font">
+                                                    V<sub>j,ext</sub> = max(A<sub>s1</sub>, A<sub>s2</sub>) f<sub>y</sub> - V<sub>col</sub>
+                                                </p>
+                                            </div>
+                                            
+                                            <div className="space-y-4 text-gray-700">
+                                                <div className="flex justify-between border-b border-gray-100 pb-2">
+                                                    <span>แรงจากเหล็กคานฝั่งที่มากที่สุด</span>
+                                                    <span className="font-mono">(max({results.as1.toFixed(2)}, {results.as2.toFixed(2)}) &times; {inputs.fy}) / 1000 = <strong className="text-blue-600">{results.maxForceRebar.toFixed(2)} Ton</strong></span>
+                                                </div>
+                                                <div className="flex justify-between border-b border-gray-100 pb-2">
+                                                    <span>แรงเฉือนจากเสา (V<sub>col</sub>)</span>
+                                                    <span className="font-mono text-red-600">- {inputs.vCol.toFixed(2)} Ton</span>
+                                                </div>
+                                                <div className="flex justify-between pt-2 text-lg font-bold">
+                                                    <span>แรงเฉือนสุทธิในข้อต่อ (V<sub>j,ext</sub>)</span>
+                                                    <span className="text-red-600">{results.vjExt.toFixed(2)} Ton</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* 3. Vn Content */}
+                                <div className={activeTab === 'vn' ? 'block' : 'hidden print:block print:mb-8 print:break-inside-avoid'}>
+                                    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                                        <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2 print:border-slate-800">การคำนวณกำลังรับแรงเฉือนระบุ (V<sub>n</sub>)</h3>
+                                        
+                                        <div className="mb-6 bg-gray-50 p-4 rounded-md print:bg-transparent print:border print:border-gray-300">
+                                            <p className="mb-2"><strong>พื้นที่หน้าตัดข้อต่อ (A<sub>j</sub>)</strong> = ความกว้าง(b) &times; ความลึก(h)</p>
+                                            <p className="font-mono text-blue-600">A<sub>j</sub> = {inputs.colWidth} &times; {inputs.colDepth} = {results.aj.toFixed(2)} cm&sup2;</p>
+                                        </div>
+
+                                        <div className="space-y-6">
+                                            <div className="border border-gray-200 rounded-lg p-4">
+                                                <h4 className="font-bold text-gray-700 mb-2">1. ข้อต่อได้รับการยึดรั้ง 4 ด้าน (Interior Joint)</h4>
+                                                <p className="math-font text-lg text-center bg-yellow-50 p-2 rounded mb-2 print:border print:border-gray-200">V<sub>n</sub> = 5.4 &radic;f'<sub>c</sub> A<sub>j</sub></p>
+                                                <p className="font-mono text-sm text-gray-600 text-center mb-2">V<sub>n</sub> = (5.4 &times; &radic;{inputs.fc} &times; {results.aj}) / 1000</p>
+                                                <div className="flex justify-between font-bold">
+                                                    <span>V<sub>n</sub> = <span className="text-blue-600">{(results.vn4Sides).toFixed(2)} Ton</span></span>
+                                                    <span>&phi;V<sub>n</sub> (&phi;={results.phi}) = <span className="text-green-600">{results.phiVn4.toFixed(2)} Ton</span></span>
+                                                </div>
+                                            </div>
+
+                                            <div className="border border-gray-200 rounded-lg p-4">
+                                                <h4 className="font-bold text-gray-700 mb-2">2. ข้อต่อได้รับการยึดรั้ง 2 หรือ 3 ด้าน (Exterior Joint)</h4>
+                                                <p className="math-font text-lg text-center bg-yellow-50 p-2 rounded mb-2 print:border print:border-gray-200">V<sub>n</sub> = 3.9 &radic;f'<sub>c</sub> A<sub>j</sub></p>
+                                                <p className="font-mono text-sm text-gray-600 text-center mb-2">V<sub>n</sub> = (3.9 &times; &radic;{inputs.fc} &times; {results.aj}) / 1000</p>
+                                                <div className="flex justify-between font-bold">
+                                                    <span>V<sub>n</sub> = <span className="text-blue-600">{(results.vn3Sides).toFixed(2)} Ton</span></span>
+                                                    <span>&phi;V<sub>n</sub> (&phi;={results.phi}) = <span className="text-green-600">{results.phiVn3.toFixed(2)} Ton</span></span>
+                                                </div>
+                                            </div>
+
+                                            <div className="border border-gray-200 rounded-lg p-4">
+                                                <h4 className="font-bold text-gray-700 mb-2">3. ข้อต่ออื่นๆ (Corner / Roof Joint)</h4>
+                                                <p className="math-font text-lg text-center bg-yellow-50 p-2 rounded mb-2 print:border print:border-gray-200">V<sub>n</sub> = 3.2 &radic;f'<sub>c</sub> A<sub>j</sub></p>
+                                                <p className="font-mono text-sm text-gray-600 text-center mb-2">V<sub>n</sub> = (3.2 &times; &radic;{inputs.fc} &times; {results.aj}) / 1000</p>
+                                                <div className="flex justify-between font-bold">
+                                                    <span>V<sub>n</sub> = <span className="text-blue-600">{(results.vnOther).toFixed(2)} Ton</span></span>
+                                                    <span>&phi;V<sub>n</sub> (&phi;={results.phi}) = <span className="text-green-600">{results.phiVnOther.toFixed(2)} Ton</span></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* 4. Av Content */}
+                                <div className={activeTab === 'av' ? 'block' : 'hidden print:block print:mb-8 print:break-inside-avoid'}>
+                                    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                                        <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2 print:border-slate-800">เหล็กปลอกขั้นต่ำ (Minimum Transverse Reinforcement)</h3>
+                                        
+                                        <div className="bg-slate-800 text-white p-4 rounded-md mb-6 text-center print:bg-white print:text-black print:border print:border-gray-300">
+                                            <p className="text-xl math-font">
+                                                A<sub>v,min</sub> = 3.5 (b<sub>w</sub> &times; s) / f<sub>yt</sub>
+                                            </p>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div className="border p-4 rounded-lg bg-gray-50 print:bg-transparent">
+                                                <h4 className="font-bold text-gray-700 mb-4 text-center">ความต้องการขั้นต่ำ</h4>
+                                                <ul className="space-y-2 text-sm mb-4">
+                                                    <li>b<sub>w</sub> (min(b, h)) = {results.bw} cm</li>
+                                                    <li>s (ระยะห่างเหล็กปลอก) = {inputs.tieSpacing} cm</li>
+                                                    <li>f<sub>yt</sub> (กำลังครากเหล็กปลอก) = {inputs.fyt} ksc</li>
+                                                </ul>
+                                                <div className="border-t pt-2 text-center">
+                                                    <p className="text-gray-600 text-sm">A<sub>v,min</sub> = 3.5 &times; ({results.bw} &times; {inputs.tieSpacing}) / {inputs.fyt}</p>
+                                                    <p className="text-xl font-bold text-red-600 mt-2">{results.avMin.toFixed(2)} cm&sup2;</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="border p-4 rounded-lg bg-blue-50 border-blue-200 print:bg-transparent">
+                                                <h4 className="font-bold text-gray-700 mb-4 text-center">ปริมาณที่จัดให้จริง</h4>
+                                                <ul className="space-y-2 text-sm mb-4">
+                                                    <li>ขนาดเหล็กปลอก = DB{inputs.tieSize} mm</li>
+                                                    <li>จำนวนขา (Legs) = {inputs.tieLegs} ขา</li>
+                                                    <li>พื้นที่เหล็ก 1 เส้น = {((Math.PI * Math.pow(inputs.tieSize/10, 2))/4).toFixed(3)} cm&sup2;</li>
+                                                </ul>
+                                                <div className="border-t border-blue-200 pt-2 text-center">
+                                                    <p className="text-gray-600 text-sm">A<sub>v,provided</sub> = {inputs.tieLegs} &times; {((Math.PI * Math.pow(inputs.tieSize/10, 2))/4).toFixed(3)}</p>
+                                                    <p className="text-xl font-bold text-blue-600 mt-2">{results.avProv.toFixed(2)} cm&sup2;</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="mt-6 flex justify-center">
+                                             <div className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold text-lg ${results.avProv >= results.avMin ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'} print:border print:border-gray-300 print:bg-transparent`}>
+                                                {results.avProv >= results.avMin ? <IconCheck /> : <IconCross />}
+                                                {results.avProv >= results.avMin ? 'ปริมาณเหล็กปลอกผ่านเกณฑ์ (OK)' : 'ปริมาณเหล็กปลอกไม่เพียงพอ (NG)'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
                             </div>
                         </div>
                     </main>
