@@ -24,22 +24,38 @@
             font-style: italic;
         }
         
-        /* เพิ่มตั้งค่ากระดาษสำหรับการพิมพ์ A4 */
+        /* ตั้งค่ากระดาษสำหรับการพิมพ์ A4 */
         @page {
             size: A4;
-            margin: 1.5cm;
+            margin: 1.5cm; /* ใช้ margin ของ @page เพื่อไม่ให้เนื้อหาตกขอบ และให้ Browser คำนวณความกว้างได้ถูกต้อง */
         }
         @media print {
             body {
                 background-color: #ffffff;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
+                /* นำ padding ออกเพื่อป้องกันความกว้างทะลุ 100% */
+                padding: 0; 
             }
             .shadow-sm, .shadow-md, .shadow-lg {
                 box-shadow: none !important;
             }
             input, select {
                 border-color: #d1d5db !important;
+            }
+            /* บังคับขึ้นหน้าใหม่เวลาพิมพ์ */
+            .print\:break-before-page {
+                page-break-before: always !important;
+                break-before: page !important;
+            }
+            /* ป้องกันกล่องย่อยถูกตัดขาดกลางหน้า */
+            .print\:break-inside-avoid {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+            /* ป้องกันการ overflow ของตาราง */
+            .print\:overflow-visible {
+                overflow: visible !important;
             }
         }
     </style>
@@ -87,10 +103,8 @@
                 colDepth: 20,  // cm (h)
                 
                 // แรงและเหล็กเสริม
-                rebarSizeTop: 12, // mm (ขนาดเหล็กบน)
-                rebarCountTop: 2, // จำนวนเส้นเหล็กบน
-                rebarSizeBot: 12, // mm (ขนาดเหล็กล่าง)
-                rebarCountBot: 2, // จำนวนเส้นเหล็กล่าง
+                topRebars: [{ id: 1, count: 2, size: 12 }], // เหล็กบน (รองรับหลายชั้น)
+                botRebars: [{ id: 2, count: 2, size: 12 }], // เหล็กล่าง (รองรับหลายชั้น)
                 vCol: 0,      // Ton (แรงเฉือนในเสา)
                 
                 // เหล็กปลอกในข้อต่อ
@@ -103,14 +117,15 @@
 
             // --- Calculations ---
             const results = useMemo(() => {
-                const { fc, fy, fyt, colWidth, colDepth, rebarSizeTop, rebarCountTop, rebarSizeBot, rebarCountBot, vCol, tieSize, tieLegs, tieSpacing } = inputs;
+                const { fc, fy, fyt, colWidth, colDepth, topRebars, botRebars, vCol, tieSize, tieLegs, tieSpacing } = inputs;
                 
                 // ตัวคูณลดกำลัง (Phi) สำหรับแรงเฉือน
                 const phi = 0.85; 
 
-                // คำนวณพื้นที่หน้าตัดเหล็ก (As1, As2) จากขนาดและจำนวน
-                const as1 = rebarCountTop * (Math.PI * Math.pow((rebarSizeTop / 10) / 2, 2)); // cm2
-                const as2 = rebarCountBot * (Math.PI * Math.pow((rebarSizeBot / 10) / 2, 2)); // cm2
+                // คำนวณพื้นที่หน้าตัดเหล็ก (As1, As2) จากทุกชั้น
+                const calculateArea = (rebars) => rebars.reduce((sum, r) => sum + r.count * (Math.PI * Math.pow((r.size / 10) / 2, 2)), 0);
+                const as1 = calculateArea(topRebars); // cm2
+                const as2 = calculateArea(botRebars); // cm2
 
                 // 1. แรงเฉือนที่เกิดขึ้นในข้อต่อ (Vj)
                 const forceRebar1 = (as1 * fy) / 1000; // Ton
@@ -127,14 +142,12 @@
                 const aj = colWidth * colDepth; // cm2
 
                 // 3. กำลังรับแรงเฉือนระบุ (Vn) ตามรูปแบบการยึดรั้ง [หน่วย Metric: ksc -> Ton]
-                // สูตร: Vn = Factor * sqrt(f'c) * Aj / 1000
                 const sqrtFc = Math.sqrt(fc);
                 const vn4Sides = (5.4 * sqrtFc * aj) / 1000;
-                const vn3Sides = (3.9 * sqrtFc * aj) / 1000;
+                const vn3Sides = (4.0 * sqrtFc * aj) / 1000; 
                 const vnOther =  (3.2 * sqrtFc * aj) / 1000;
 
                 // 4. เหล็กปลอกขั้นต่ำ (Av,min)
-                // สูตร: Av,min = 3.5 * bw * s / fyt (ใช้ค่าที่น้อยที่สุดระหว่างความกว้างและความลึกเสา)
                 const bw = Math.min(colWidth, colDepth);
                 const avMin = (3.5 * bw * tieSpacing) / fyt; // cm2
                 
@@ -147,7 +160,7 @@
                     vn4Sides, vn3Sides, vnOther, 
                     phiVn4: phi * vn4Sides, phiVn3: phi * vn3Sides, phiVnOther: phi * vnOther,
                     avMin, avProv, forceRebar1, forceRebar2,
-                    as1, as2, bw // ส่งค่า As และ bw ที่คำนวณได้ไปใช้ใน UI
+                    as1, as2, bw
                 };
             }, [inputs]);
 
@@ -155,6 +168,27 @@
             const handleInputChange = (e) => {
                 const { name, value } = e.target;
                 setInputs(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
+            };
+
+            const addRebarLayer = (type) => {
+                setInputs(prev => ({
+                    ...prev,
+                    [type]: [...prev[type], { id: Date.now(), count: 2, size: 12 }]
+                }));
+            };
+
+            const removeRebarLayer = (type, id) => {
+                setInputs(prev => ({
+                    ...prev,
+                    [type]: prev[type].filter(r => r.id !== id)
+                }));
+            };
+
+            const updateRebar = (type, id, field, value) => {
+                setInputs(prev => ({
+                    ...prev,
+                    [type]: prev[type].map(r => r.id === id ? { ...r, [field]: parseFloat(value) || 0 } : r)
+                }));
             };
 
             // --- Sub-components ---
@@ -166,20 +200,19 @@
 
             return (
                 <div className="min-h-screen pb-12 print:pb-0 print:bg-white">
-                    {/* Header */}
-                    <header className="bg-slate-800 text-white shadow-lg print:shadow-none print:bg-white print:text-slate-800 print:border-b-2 print:border-slate-800">
+                    {/* Header สำหรับหน้าจอ UI (ซ่อนตอนพิมพ์) */}
+                    <header className="bg-slate-800 text-white shadow-lg print:hidden">
                         <div className="max-w-5xl mx-auto px-4 py-5 flex items-center justify-between">
                             <div className="flex items-center gap-4">
                                 <div className="p-2 bg-slate-700 rounded-lg print:bg-transparent print:text-slate-800 print:p-0">
                                     <IconJoint />
                                 </div>
                                 <div>
-                                    <h1 className="text-2xl font-bold">ACI 318-25 Joint Strength</h1>
+                                    <h1 className="text-2xl font-bold">มยผ. 1301/1302-61 (IMRF) Joint</h1>
                                     <p className="text-slate-300 text-sm print:text-slate-600">โปรแกรมคำนวณกำลังรับแรงเฉือนในข้อต่อเสา-คาน</p>
                                 </div>
                             </div>
                             
-                            {/* ปุ่ม Print รายงานซ่อนเวลาพิมพ์จริง */}
                             <button 
                                 onClick={() => window.print()} 
                                 className="print:hidden bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors shadow-sm cursor-pointer"
@@ -190,16 +223,23 @@
                         </div>
                     </header>
 
-                    <main className="max-w-5xl mx-auto px-4 mt-6 print:mt-4 print:px-0">
-                        {/* --- Section 1: Global Inputs --- */}
-                        <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden mb-6 print:shadow-none print:border-none print:mb-6">
+                    {/* Header สำหรับการพิมพ์ (รายการคำนวณ) */}
+                    <div className="hidden print:block text-center border-b-2 border-slate-800 pb-4 pt-4 max-w-5xl w-full mx-auto print:mb-6 print:break-inside-avoid">
+                        <h1 className="text-2xl font-bold mb-2">รายการคำนวณกำลังรับแรงเฉือนในข้อต่อเสา-คาน (Beam-Column Joint)</h1>
+                        <h2 className="text-lg text-slate-700">อ้างอิงมาตรฐานการออกแบบอาคารต้านทานการสั่นสะเทือนของแผ่นดินไหว (มยผ. 1301/1302-61)</h2>
+                    </div>
+
+                    <main className="max-w-5xl w-full mx-auto px-4 mt-6 print:mt-0 print:px-0">
+                        {/* --- Section 1: Global Inputs (อยู่หน้า 1) --- */}
+                        <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden mb-6 print:shadow-none print:border-none print:mb-6 print:break-inside-avoid">
                             <div className="bg-blue-50 border-b border-blue-100 px-6 py-3 print:bg-transparent print:border-b-2 print:border-slate-800 print:px-0">
                                 <h2 className="font-bold text-blue-800 flex items-center gap-2 print:text-slate-800">
                                     <svg className="w-5 h-5 print:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
                                     ข้อมูลนำเข้า (Global Inputs)
                                 </h2>
                             </div>
-                            <div className="p-6 grid grid-cols-1 md:grid-cols-4 gap-6 print:px-0 print:py-4">
+                            {/* ปรับ Grid ตอนพิมพ์เป็น 2 คอลัมน์เพื่อไม่ให้แคบเกินไป */}
+                            <div className="p-6 grid grid-cols-1 md:grid-cols-4 print:grid-cols-2 gap-6 print:px-0 print:py-4 print:gap-y-8 print:border-b print:border-gray-200 print:pb-8">
                                 {/* Column 1: Material */}
                                 <div className="space-y-4">
                                     <h3 className="text-sm font-semibold text-gray-500 uppercase border-b pb-1">วัสดุ (Material)</h3>
@@ -231,48 +271,68 @@
                                     <h3 className="text-sm font-semibold text-gray-500 uppercase border-b pb-1">แรงและเหล็กคาน</h3>
                                     
                                     <div className="bg-gray-50 p-3 rounded-md border border-gray-200">
-                                        <label className="block text-xs font-bold text-gray-700 mb-2">เหล็กบน (Top Rebar)</label>
-                                        <div className="flex gap-2 mb-2">
-                                            <div className="w-1/2">
-                                                <label className="block text-[10px] text-gray-500 mb-1">จำนวน (เส้น)</label>
-                                                <input type="number" name="rebarCountTop" value={inputs.rebarCountTop} onChange={handleInputChange} min="1" className="w-full px-2 py-1.5 text-sm border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none" />
-                                            </div>
-                                            <div className="w-1/2">
-                                                <label className="block text-[10px] text-gray-500 mb-1">ขนาด</label>
-                                                <select name="rebarSizeTop" value={inputs.rebarSizeTop} onChange={handleInputChange} className="w-full px-2 py-1.5 text-sm border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none">
-                                                    <option value="12">DB12</option>
-                                                    <option value="16">DB16</option>
-                                                    <option value="20">DB20</option>
-                                                    <option value="25">DB25</option>
-                                                    <option value="28">DB28</option>
-                                                    <option value="32">DB32</option>
-                                                </select>
-                                            </div>
+                                        <div className="flex justify-between items-center mb-2">
+                                            <label className="block text-xs font-bold text-gray-700">เหล็กบน (Top Rebar)</label>
+                                            <button type="button" onClick={() => addRebarLayer('topRebars')} className="text-[10px] bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 print:hidden flex items-center transition-colors">+ เพิ่มชั้น</button>
                                         </div>
+                                        {inputs.topRebars.map((rebar, index) => (
+                                            <div key={rebar.id} className="flex gap-2 mb-2 items-end">
+                                                <div className="flex-1">
+                                                    {index === 0 && <label className="block text-[10px] text-gray-500 mb-1">จำนวน (เส้น)</label>}
+                                                    <input type="number" value={rebar.count} onChange={(e) => updateRebar('topRebars', rebar.id, 'count', e.target.value)} min="1" className="w-full px-2 py-1.5 text-sm border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
+                                                </div>
+                                                <div className="flex-1">
+                                                    {index === 0 && <label className="block text-[10px] text-gray-500 mb-1">ขนาด</label>}
+                                                    <select value={rebar.size} onChange={(e) => updateRebar('topRebars', rebar.id, 'size', e.target.value)} className="w-full px-2 py-1.5 text-sm border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                                                        <option value="12">DB12</option>
+                                                        <option value="16">DB16</option>
+                                                        <option value="20">DB20</option>
+                                                        <option value="25">DB25</option>
+                                                        <option value="28">DB28</option>
+                                                        <option value="32">DB32</option>
+                                                    </select>
+                                                </div>
+                                                {inputs.topRebars.length > 1 && (
+                                                    <button type="button" onClick={() => removeRebarLayer('topRebars', rebar.id)} className="mb-0.5 p-1.5 bg-red-100 text-red-600 rounded-md hover:bg-red-200 print:hidden transition-colors" title="ลบชั้นนี้">
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ))}
                                         <div className="text-[12px] text-right text-blue-700 font-mono bg-blue-100/50 p-1.5 rounded border border-blue-100 print:bg-transparent print:border-none print:p-0">
                                             A<sub>s1</sub> = {results.as1.toFixed(2)} cm&sup2;
                                         </div>
                                     </div>
 
                                     <div className="bg-gray-50 p-3 rounded-md border border-gray-200">
-                                        <label className="block text-xs font-bold text-gray-700 mb-2">เหล็กล่าง (Bottom Rebar)</label>
-                                        <div className="flex gap-2 mb-2">
-                                            <div className="w-1/2">
-                                                <label className="block text-[10px] text-gray-500 mb-1">จำนวน (เส้น)</label>
-                                                <input type="number" name="rebarCountBot" value={inputs.rebarCountBot} onChange={handleInputChange} min="1" className="w-full px-2 py-1.5 text-sm border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none" />
-                                            </div>
-                                            <div className="w-1/2">
-                                                <label className="block text-[10px] text-gray-500 mb-1">ขนาด</label>
-                                                <select name="rebarSizeBot" value={inputs.rebarSizeBot} onChange={handleInputChange} className="w-full px-2 py-1.5 text-sm border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none">
-                                                    <option value="12">DB12</option>
-                                                    <option value="16">DB16</option>
-                                                    <option value="20">DB20</option>
-                                                    <option value="25">DB25</option>
-                                                    <option value="28">DB28</option>
-                                                    <option value="32">DB32</option>
-                                                </select>
-                                            </div>
+                                        <div className="flex justify-between items-center mb-2">
+                                            <label className="block text-xs font-bold text-gray-700">เหล็กล่าง (Bottom Rebar)</label>
+                                            <button type="button" onClick={() => addRebarLayer('botRebars')} className="text-[10px] bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 print:hidden flex items-center transition-colors">+ เพิ่มชั้น</button>
                                         </div>
+                                        {inputs.botRebars.map((rebar, index) => (
+                                            <div key={rebar.id} className="flex gap-2 mb-2 items-end">
+                                                <div className="flex-1">
+                                                    {index === 0 && <label className="block text-[10px] text-gray-500 mb-1">จำนวน (เส้น)</label>}
+                                                    <input type="number" value={rebar.count} onChange={(e) => updateRebar('botRebars', rebar.id, 'count', e.target.value)} min="1" className="w-full px-2 py-1.5 text-sm border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
+                                                </div>
+                                                <div className="flex-1">
+                                                    {index === 0 && <label className="block text-[10px] text-gray-500 mb-1">ขนาด</label>}
+                                                    <select value={rebar.size} onChange={(e) => updateRebar('botRebars', rebar.id, 'size', e.target.value)} className="w-full px-2 py-1.5 text-sm border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                                                        <option value="12">DB12</option>
+                                                        <option value="16">DB16</option>
+                                                        <option value="20">DB20</option>
+                                                        <option value="25">DB25</option>
+                                                        <option value="28">DB28</option>
+                                                        <option value="32">DB32</option>
+                                                    </select>
+                                                </div>
+                                                {inputs.botRebars.length > 1 && (
+                                                    <button type="button" onClick={() => removeRebarLayer('botRebars', rebar.id)} className="mb-0.5 p-1.5 bg-red-100 text-red-600 rounded-md hover:bg-red-200 print:hidden transition-colors" title="ลบชั้นนี้">
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ))}
                                         <div className="text-[12px] text-right text-blue-700 font-mono bg-blue-100/50 p-1.5 rounded border border-blue-100 print:bg-transparent print:border-none print:p-0">
                                             A<sub>s2</sub> = {results.as2.toFixed(2)} cm&sup2;
                                         </div>
@@ -310,7 +370,7 @@
                         </div>
 
                         {/* --- Section 2 & 3: Tabs and Contents --- */}
-                        <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden print:shadow-none print:border-none print:overflow-visible">
+                        <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden print:shadow-none print:border-none print:overflow-visible print:break-before-page">
                             {/* Tabs Header */}
                             <div className="flex overflow-x-auto border-b border-gray-200 bg-gray-50 print:hidden">
                                 <button 
@@ -337,17 +397,23 @@
                                 >
                                     เหล็กปลอกขั้นต่ำ
                                 </button>
+                                <button 
+                                    onClick={() => setActiveTab('manual')}
+                                    className={`px-6 py-4 text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'manual' ? 'text-blue-600 border-b-2 border-blue-600 bg-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
+                                >
+                                    คู่มือและตัวแปร
+                                </button>
                             </div>
 
-                            {/* Tab Body (แสดงทั้งหมดเมื่อสั่งพิมพ์) */}
+                            {/* Tab Body (เอา print:break-inside-avoid ออกจากกล่องครอบขนาดใหญ่ เพื่อให้หน้ากระดาษแบ่งได้ถูกต้อง) */}
                             <div className="p-6 bg-gray-50/50 print:p-0 print:bg-transparent">
                                 
                                 {/* 1. Summary Content */}
-                                <div className={activeTab === 'summary' ? 'block' : 'hidden print:block print:mb-8 print:break-inside-avoid'}>
+                                <div className={`${activeTab === 'summary' ? 'block' : 'hidden'} print:block print:mb-8`}>
                                     <div className="space-y-6">
-                                        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                                        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 print:break-inside-avoid print:shadow-none print:border-gray-300 print:p-4">
                                             <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2 print:border-slate-800">ตารางเปรียบเทียบกำลังรับแรงเฉือนในข้อต่อ</h3>
-                                            <div className="overflow-x-auto">
+                                            <div className="overflow-x-auto print:overflow-visible">
                                                 <table className="min-w-full divide-y divide-gray-200">
                                                     <thead className="bg-gray-50 print:bg-gray-100">
                                                         <tr>
@@ -387,7 +453,7 @@
                                             </div>
                                         </div>
 
-                                        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+                                        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 print:break-inside-avoid print:shadow-none print:border-gray-300 print:p-4">
                                             <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2 print:border-slate-800">สรุปปริมาณเหล็กปลอกในข้อต่อ</h3>
                                             <div className="flex items-center justify-between p-4 bg-gray-50 rounded-md print:bg-transparent print:border print:border-gray-300">
                                                 <div>
@@ -409,10 +475,13 @@
                                 </div>
 
                                 {/* 2. Vj Content */}
-                                <div className={activeTab === 'vj' ? 'block' : 'hidden print:block print:mb-8 print:break-inside-avoid'}>
+                                <div className={`${activeTab === 'vj' ? 'block' : 'hidden'} print:block print:mb-8`}>
                                     <div className="space-y-6">
-                                        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                                            <h3 className="text-lg font-bold text-gray-800 mb-2 border-b pb-2 print:border-slate-800">แรงเฉือนข้อต่อภายใน (Interior / Continuous Joint)</h3>
+                                        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 print:break-inside-avoid print:shadow-none print:border-gray-300 print:p-4">
+                                            <h3 className="text-lg font-bold text-gray-800 mb-2 border-b pb-2 print:border-slate-800">
+                                                แรงเฉือนข้อต่อภายใน (Interior / Continuous Joint)
+                                                <span className="text-sm font-normal text-blue-600 ml-2 print:text-gray-600">[มยผ. 1301/1302-61 ข้อ 5.2.7.5.1]</span>
+                                            </h3>
                                             <p className="text-sm text-gray-500 mb-4">* นำไปเปรียบเทียบกับข้อต่อแบบยึดรั้ง 4 ด้าน และ 2-3 ด้าน</p>
                                             
                                             <div className="bg-yellow-50 p-4 rounded-md mb-6 border border-yellow-200 text-center print:border-gray-300">
@@ -441,8 +510,11 @@
                                             </div>
                                         </div>
 
-                                        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                                            <h3 className="text-lg font-bold text-gray-800 mb-2 border-b pb-2 print:border-slate-800">แรงเฉือนข้อต่อภายนอก (Exterior / Corner / Roof Joint)</h3>
+                                        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 print:break-inside-avoid print:shadow-none print:border-gray-300 print:p-4">
+                                            <h3 className="text-lg font-bold text-gray-800 mb-2 border-b pb-2 print:border-slate-800">
+                                                แรงเฉือนข้อต่อภายนอก (Exterior / Corner / Roof Joint)
+                                                <span className="text-sm font-normal text-blue-600 ml-2 print:text-gray-600">[มยผ. 1301/1302-61 ข้อ 5.2.7.5.2]</span>
+                                            </h3>
                                             <p className="text-sm text-gray-500 mb-4">* นำไปเปรียบเทียบกับข้อต่ออื่นๆ (Corner/Roof)</p>
                                             
                                             <div className="bg-blue-50 p-4 rounded-md mb-6 border border-blue-200 text-center print:border-gray-300">
@@ -470,18 +542,24 @@
                                 </div>
 
                                 {/* 3. Vn Content */}
-                                <div className={activeTab === 'vn' ? 'block' : 'hidden print:block print:mb-8 print:break-inside-avoid'}>
-                                    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                                        <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2 print:border-slate-800">การคำนวณกำลังรับแรงเฉือนระบุ (V<sub>n</sub>)</h3>
-                                        
-                                        <div className="mb-6 bg-gray-50 p-4 rounded-md print:bg-transparent print:border print:border-gray-300">
-                                            <p className="mb-2"><strong>พื้นที่หน้าตัดข้อต่อ (A<sub>j</sub>)</strong> = ความกว้าง(b) &times; ความลึก(h)</p>
-                                            <p className="font-mono text-blue-600">A<sub>j</sub> = {inputs.colWidth} &times; {inputs.colDepth} = {results.aj.toFixed(2)} cm&sup2;</p>
+                                <div className={`${activeTab === 'vn' ? 'block' : 'hidden'} print:block print:mb-8`}>
+                                    {/* นำ border ของคอนเทนเนอร์หลักออกเวลาพิมพ์ เพื่อให้แบ่งหน้าได้สวยงามและไม่ติดกรอบซ้อน */}
+                                    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 print:shadow-none print:border-none print:p-0 print:bg-transparent">
+                                        <div className="print:break-inside-avoid print:mb-6">
+                                            <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2 print:border-slate-800">การคำนวณกำลังรับแรงเฉือนระบุ (V<sub>n</sub>)</h3>
+                                            
+                                            <div className="mb-6 bg-gray-50 p-4 rounded-md print:bg-transparent print:border print:border-gray-300">
+                                                <p className="mb-2"><strong>พื้นที่หน้าตัดข้อต่อ (A<sub>j</sub>)</strong> = ความกว้าง(b) &times; ความลึก(h)</p>
+                                                <p className="font-mono text-blue-600">A<sub>j</sub> = {inputs.colWidth} &times; {inputs.colDepth} = {results.aj.toFixed(2)} cm&sup2;</p>
+                                            </div>
                                         </div>
 
                                         <div className="space-y-6">
-                                            <div className="border border-gray-200 rounded-lg p-4">
-                                                <h4 className="font-bold text-gray-700 mb-2">1. ข้อต่อได้รับการยึดรั้ง 4 ด้าน (Interior Joint)</h4>
+                                            <div className="border border-gray-200 rounded-lg p-4 print:border-gray-300 print:break-inside-avoid">
+                                                <h4 className="font-bold text-gray-700 mb-2">
+                                                    1. ข้อต่อได้รับการยึดรั้ง 4 ด้าน (Interior Joint)
+                                                    <span className="text-sm font-normal text-blue-600 ml-2 print:text-gray-600">[มยผ. 1301/1302-61 ข้อ 5.2.7.5.3 (1)]</span>
+                                                </h4>
                                                 <p className="math-font text-lg text-center bg-yellow-50 p-2 rounded mb-2 print:border print:border-gray-200">V<sub>n</sub> = 5.4 &radic;f'<sub>c</sub> A<sub>j</sub></p>
                                                 <p className="font-mono text-sm text-gray-600 text-center mb-2">V<sub>n</sub> = (5.4 &times; &radic;{inputs.fc} &times; {results.aj}) / 1000</p>
                                                 <div className="flex justify-between font-bold">
@@ -490,18 +568,24 @@
                                                 </div>
                                             </div>
 
-                                            <div className="border border-gray-200 rounded-lg p-4">
-                                                <h4 className="font-bold text-gray-700 mb-2">2. ข้อต่อได้รับการยึดรั้ง 2 หรือ 3 ด้าน (Exterior Joint)</h4>
-                                                <p className="math-font text-lg text-center bg-yellow-50 p-2 rounded mb-2 print:border print:border-gray-200">V<sub>n</sub> = 3.9 &radic;f'<sub>c</sub> A<sub>j</sub></p>
-                                                <p className="font-mono text-sm text-gray-600 text-center mb-2">V<sub>n</sub> = (3.9 &times; &radic;{inputs.fc} &times; {results.aj}) / 1000</p>
+                                            <div className="border border-gray-200 rounded-lg p-4 print:border-gray-300 print:break-inside-avoid">
+                                                <h4 className="font-bold text-gray-700 mb-2">
+                                                    2. ข้อต่อได้รับการยึดรั้ง 2 หรือ 3 ด้าน (Exterior Joint)
+                                                    <span className="text-sm font-normal text-blue-600 ml-2 print:text-gray-600">[มยผ. 1301/1302-61 ข้อ 5.2.7.5.3 (2)]</span>
+                                                </h4>
+                                                <p className="math-font text-lg text-center bg-yellow-50 p-2 rounded mb-2 print:border print:border-gray-200">V<sub>n</sub> = 4.0 &radic;f'<sub>c</sub> A<sub>j</sub></p>
+                                                <p className="font-mono text-sm text-gray-600 text-center mb-2">V<sub>n</sub> = (4.0 &times; &radic;{inputs.fc} &times; {results.aj}) / 1000</p>
                                                 <div className="flex justify-between font-bold">
                                                     <span>V<sub>n</sub> = <span className="text-blue-600">{(results.vn3Sides).toFixed(2)} Ton</span></span>
                                                     <span>&phi;V<sub>n</sub> (&phi;={results.phi}) = <span className="text-green-600">{results.phiVn3.toFixed(2)} Ton</span></span>
                                                 </div>
                                             </div>
 
-                                            <div className="border border-gray-200 rounded-lg p-4">
-                                                <h4 className="font-bold text-gray-700 mb-2">3. ข้อต่ออื่นๆ (Corner / Roof Joint)</h4>
+                                            <div className="border border-gray-200 rounded-lg p-4 print:border-gray-300 print:break-inside-avoid">
+                                                <h4 className="font-bold text-gray-700 mb-2">
+                                                    3. ข้อต่ออื่นๆ (Corner / Roof Joint)
+                                                    <span className="text-sm font-normal text-blue-600 ml-2 print:text-gray-600">[มยผ. 1301/1302-61 ข้อ 5.2.7.5.3 (3)]</span>
+                                                </h4>
                                                 <p className="math-font text-lg text-center bg-yellow-50 p-2 rounded mb-2 print:border print:border-gray-200">V<sub>n</sub> = 3.2 &radic;f'<sub>c</sub> A<sub>j</sub></p>
                                                 <p className="font-mono text-sm text-gray-600 text-center mb-2">V<sub>n</sub> = (3.2 &times; &radic;{inputs.fc} &times; {results.aj}) / 1000</p>
                                                 <div className="flex justify-between font-bold">
@@ -514,9 +598,12 @@
                                 </div>
 
                                 {/* 4. Av Content */}
-                                <div className={activeTab === 'av' ? 'block' : 'hidden print:block print:mb-8 print:break-inside-avoid'}>
-                                    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                                        <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2 print:border-slate-800">เหล็กปลอกขั้นต่ำ (Minimum Transverse Reinforcement)</h3>
+                                <div className={`${activeTab === 'av' ? 'block' : 'hidden'} print:block print:mb-8`}>
+                                    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 print:break-inside-avoid print:shadow-none print:border-gray-300 print:p-4">
+                                        <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2 print:border-slate-800">
+                                            เหล็กปลอกขั้นต่ำ (Minimum Transverse Reinforcement)
+                                            <span className="text-sm font-normal text-blue-600 ml-2 print:text-gray-600">[มยผ. 1301/1302-61 ข้อ 5.2.7.4.4]</span>
+                                        </h3>
                                         
                                         <div className="bg-slate-800 text-white p-4 rounded-md mb-6 text-center print:bg-white print:text-black print:border print:border-gray-300">
                                             <p className="text-xl math-font">
@@ -538,24 +625,115 @@
                                                 </div>
                                             </div>
 
-                                            <div className="border p-4 rounded-lg bg-blue-50 border-blue-200 print:bg-transparent">
+                                            <div className="border p-4 rounded-lg bg-blue-50 border-blue-200 print:bg-transparent print:border-gray-300">
                                                 <h4 className="font-bold text-gray-700 mb-4 text-center">ปริมาณที่จัดให้จริง</h4>
                                                 <ul className="space-y-2 text-sm mb-4">
                                                     <li>ขนาดเหล็กปลอก = DB{inputs.tieSize} mm</li>
                                                     <li>จำนวนขา (Legs) = {inputs.tieLegs} ขา</li>
                                                     <li>พื้นที่เหล็ก 1 เส้น = {((Math.PI * Math.pow(inputs.tieSize/10, 2))/4).toFixed(3)} cm&sup2;</li>
                                                 </ul>
-                                                <div className="border-t border-blue-200 pt-2 text-center">
+                                                <div className="border-t border-blue-200 print:border-gray-300 pt-2 text-center">
                                                     <p className="text-gray-600 text-sm">A<sub>v,provided</sub> = {inputs.tieLegs} &times; {((Math.PI * Math.pow(inputs.tieSize/10, 2))/4).toFixed(3)}</p>
                                                     <p className="text-xl font-bold text-blue-600 mt-2">{results.avProv.toFixed(2)} cm&sup2;</p>
                                                 </div>
                                             </div>
                                         </div>
                                         
-                                        <div className="mt-6 flex justify-center">
+                                        <div className="mt-6 flex justify-center print:mt-4">
                                              <div className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold text-lg ${results.avProv >= results.avMin ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'} print:border print:border-gray-300 print:bg-transparent`}>
                                                 {results.avProv >= results.avMin ? <IconCheck /> : <IconCross />}
                                                 {results.avProv >= results.avMin ? 'ปริมาณเหล็กปลอกผ่านเกณฑ์ (OK)' : 'ปริมาณเหล็กปลอกไม่เพียงพอ (NG)'}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* 5. Manual Content (แยกหน้าสุดท้าย) */}
+                                <div className={`${activeTab === 'manual' ? 'block' : 'hidden'} print:block print:mb-8 print:break-before-page`}>
+                                    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 print:shadow-none print:border-none print:p-0 space-y-8">
+                                        {/* Section: Variables */}
+                                        <div className="print:break-inside-avoid">
+                                            <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2 print:border-slate-800">คำอธิบายตัวแปร (Variables)</h3>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3 text-sm text-gray-700">
+                                                <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">f'<sub>c</sub></span><span>= กำลังอัดประลัยของคอนกรีต (ksc)</span></div>
+                                                <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">f<sub>y</sub></span><span>= กำลังครากของเหล็กเสริมหลักในคาน (ksc)</span></div>
+                                                <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">f<sub>yt</sub></span><span>= กำลังครากของเหล็กปลอก (ksc)</span></div>
+                                                <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">b, h</span><span>= ความกว้าง และความลึกของเสา (cm)</span></div>
+                                                <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">A<sub>s1</sub></span><span>= พื้นที่หน้าตัดรวมเหล็กเสริมบน (cm&sup2;)</span></div>
+                                                <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">A<sub>s2</sub></span><span>= พื้นที่หน้าตัดรวมเหล็กเสริมล่าง (cm&sup2;)</span></div>
+                                                <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">V<sub>col</sub></span><span>= แรงเฉือนในเสาที่ระดับข้อต่อ (Ton)</span></div>
+                                                <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">A<sub>j</sub></span><span>= พื้นที่ต้านแรงเฉือนประสิทธิผลของข้อต่อ (cm&sup2;)</span></div>
+                                                <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">V<sub>j</sub></span><span>= แรงเฉือนที่เกิดขึ้นในข้อต่อ (Ton)</span></div>
+                                                <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">V<sub>n</sub></span><span>= กำลังต้านแรงเฉือนระบุของข้อต่อ (Ton)</span></div>
+                                                <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">&phi;</span><span>= ตัวคูณลดกำลังของข้อต่อ (0.85)</span></div>
+                                                <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">A<sub>v,min</sub></span><span>= ปริมาณเหล็กปลอกขั้นต่ำ (cm&sup2;)</span></div>
+                                                <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">s</span><span>= ระยะเรียงของเหล็กปลอก (cm)</span></div>
+                                            </div>
+                                        </div>
+
+                                        {/* Section: Joint Types Diagram */}
+                                        <div className="print:break-inside-avoid">
+                                            <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2 print:border-slate-800">รูปแบบข้อต่อ (Joint Types) <span className="text-sm font-normal text-blue-600">[อ้างอิง มยผ. รูปที่ 5.2-6]</span></h3>
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                                {/* Type 1: 4 Sides */}
+                                                <div className="border border-gray-200 rounded-lg p-4 flex flex-col items-center text-center bg-gray-50 print:bg-transparent print:border-gray-300">
+                                                    <div className="h-32 flex items-center justify-center mb-4">
+                                                        <svg viewBox="0 0 100 100" className="w-24 h-24">
+                                                            <defs>
+                                                                <pattern id="grid1" width="4" height="4" patternUnits="userSpaceOnUse">
+                                                                    <circle cx="2" cy="2" r="0.75" fill="#1d4ed8" opacity="0.6"/>
+                                                                </pattern>
+                                                            </defs>
+                                                            <rect x="42" y="10" width="16" height="30" fill="#e2e8f0" stroke="#64748b" strokeWidth="2"/>
+                                                            <rect x="42" y="60" width="16" height="30" fill="#e2e8f0" stroke="#64748b" strokeWidth="2"/>
+                                                            <rect x="10" y="42" width="30" height="16" fill="#e2e8f0" stroke="#64748b" strokeWidth="2"/>
+                                                            <rect x="60" y="42" width="30" height="16" fill="#e2e8f0" stroke="#64748b" strokeWidth="2"/>
+                                                            <rect x="36" y="36" width="28" height="28" fill="url(#grid1)" stroke="#1d4ed8" strokeWidth="2" />
+                                                        </svg>
+                                                    </div>
+                                                    <p className="font-bold text-sm text-gray-800">(ก) ข้อต่อยึดรั้ง 4 ด้าน</p>
+                                                    <p className="text-xs text-gray-500 mt-1">คานเข้าบรรจบครบ 4 ด้าน<br/>(Interior Joint)</p>
+                                                    <p className="math-font text-blue-700 font-bold mt-2">V<sub>n</sub> = 5.4 &radic;f'<sub>c</sub> A<sub>j</sub></p>
+                                                </div>
+
+                                                {/* Type 2: 3 Sides / 2 Opposite */}
+                                                <div className="border border-gray-200 rounded-lg p-4 flex flex-col items-center text-center bg-gray-50 print:bg-transparent print:border-gray-300">
+                                                    <div className="h-32 flex items-center justify-center mb-4">
+                                                        <svg viewBox="0 0 100 100" className="w-24 h-24">
+                                                            <defs>
+                                                                <pattern id="grid2" width="4" height="4" patternUnits="userSpaceOnUse">
+                                                                    <circle cx="2" cy="2" r="0.75" fill="#1d4ed8" opacity="0.6"/>
+                                                                </pattern>
+                                                            </defs>
+                                                            <rect x="42" y="10" width="16" height="30" fill="#e2e8f0" stroke="#64748b" strokeWidth="2"/>
+                                                            <rect x="10" y="42" width="30" height="16" fill="#e2e8f0" stroke="#64748b" strokeWidth="2"/>
+                                                            <rect x="60" y="42" width="30" height="16" fill="#e2e8f0" stroke="#64748b" strokeWidth="2"/>
+                                                            <rect x="36" y="36" width="28" height="28" fill="url(#grid2)" stroke="#1d4ed8" strokeWidth="2" />
+                                                        </svg>
+                                                    </div>
+                                                    <p className="font-bold text-sm text-gray-800">(ข) ข้อต่อยึดรั้ง 2-3 ด้าน</p>
+                                                    <p className="text-xs text-gray-500 mt-1">คานเข้าบรรจบ 3 ด้าน หรือ 2 ด้านตรงข้ามกัน<br/>(Exterior Joint)</p>
+                                                    <p className="math-font text-blue-700 font-bold mt-2">V<sub>n</sub> = 4.0 &radic;f'<sub>c</sub> A<sub>j</sub></p>
+                                                </div>
+
+                                                {/* Type 3: Other */}
+                                                <div className="border border-gray-200 rounded-lg p-4 flex flex-col items-center text-center bg-gray-50 print:bg-transparent print:border-gray-300">
+                                                    <div className="h-32 flex items-center justify-center mb-4">
+                                                        <svg viewBox="0 0 100 100" className="w-24 h-24">
+                                                            <defs>
+                                                                <pattern id="grid3" width="4" height="4" patternUnits="userSpaceOnUse">
+                                                                    <circle cx="2" cy="2" r="0.75" fill="#1d4ed8" opacity="0.6"/>
+                                                                </pattern>
+                                                            </defs>
+                                                            <rect x="42" y="10" width="16" height="30" fill="#e2e8f0" stroke="#64748b" strokeWidth="2"/>
+                                                            <rect x="60" y="42" width="30" height="16" fill="#e2e8f0" stroke="#64748b" strokeWidth="2"/>
+                                                            <rect x="36" y="36" width="28" height="28" fill="url(#grid3)" stroke="#1d4ed8" strokeWidth="2" />
+                                                        </svg>
+                                                    </div>
+                                                    <p className="font-bold text-sm text-gray-800">(ค) ข้อต่ออื่นๆ</p>
+                                                    <p className="text-xs text-gray-500 mt-1">คานเข้าบรรจบเป็นมุมฉาก หรือกรณีอื่นๆ<br/>(Corner / Roof Joint)</p>
+                                                    <p className="math-font text-blue-700 font-bold mt-2">V<sub>n</sub> = 3.2 &radic;f'<sub>c</sub> A<sub>j</sub></p>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
