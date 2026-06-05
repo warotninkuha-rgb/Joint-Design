@@ -27,14 +27,13 @@
         /* ตั้งค่ากระดาษสำหรับการพิมพ์ A4 */
         @page {
             size: A4;
-            margin: 1.5cm; /* ใช้ margin ของ @page เพื่อไม่ให้เนื้อหาตกขอบ และให้ Browser คำนวณความกว้างได้ถูกต้อง */
+            margin: 1cm; /* ปรับลด margin ลงเล็กน้อยเพื่อให้หน้า 1 บรรจุข้อมูลได้ครบ */
         }
         @media print {
             body {
                 background-color: #ffffff;
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
-                /* นำ padding ออกเพื่อป้องกันความกว้างทะลุ 100% */
                 padding: 0; 
             }
             .shadow-sm, .shadow-md, .shadow-lg {
@@ -93,6 +92,8 @@
         const App = () => {
             // --- 1. Global States (Inputs) ---
             const [inputs, setInputs] = useState({
+                // ข้อมูลทั่วไป
+                memberName: '', // ชื่อ Member
                 // วัสดุ
                 fc: 240,       // ksc
                 fy: 4000,      // ksc
@@ -166,8 +167,11 @@
 
             // --- Handlers ---
             const handleInputChange = (e) => {
-                const { name, value } = e.target;
-                setInputs(prev => ({ ...prev, [name]: parseFloat(value) || 0 }));
+                const { name, value, type } = e.target;
+                setInputs(prev => ({ 
+                    ...prev, 
+                    [name]: type === 'text' ? value : (parseFloat(value) || 0) 
+                }));
             };
 
             const addRebarLayer = (type) => {
@@ -193,7 +197,7 @@
 
             // --- Sub-components ---
             const StatusBadge = ({ isPass }) => (
-                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isPass ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${isPass ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'} print:px-1.5 print:py-0.5`}>
                     {isPass ? 'ผ่าน (Pass)' : 'ไม่ผ่าน (Fail)'}
                 </span>
             );
@@ -224,66 +228,74 @@
                     </header>
 
                     {/* Header สำหรับการพิมพ์ (รายการคำนวณ) */}
-                    <div className="hidden print:block text-center border-b-2 border-slate-800 pb-4 pt-4 max-w-5xl w-full mx-auto print:mb-6 print:break-inside-avoid">
-                        <h1 className="text-2xl print:text-xl font-bold mb-2 whitespace-nowrap">รายการคำนวณกำลังรับแรงเฉือนในข้อต่อเสา-คาน (Beam-Column Joint)</h1>
+                    <div className="hidden print:block text-center border-b-2 border-slate-800 pb-2 pt-2 max-w-5xl w-full mx-auto print:mb-4 print:break-inside-avoid">
+                        {inputs.memberName && (
+                            <h2 className="text-xl print:text-lg font-bold text-blue-700 mb-1 whitespace-nowrap">จุดต่อพิจารณา (Member): {inputs.memberName}</h2>
+                        )}
+                        <h1 className="text-2xl print:text-xl font-bold mb-1 whitespace-nowrap">รายการคำนวณกำลังรับแรงเฉือนในข้อต่อเสา-คาน (Beam-Column Joint)</h1>
                         <h2 className="text-lg print:text-base text-slate-700 whitespace-nowrap">อ้างอิงมาตรฐานการออกแบบอาคารต้านทานการสั่นสะเทือนของแผ่นดินไหว (มยผ. 1301/1302-61)</h2>
                     </div>
 
                     <main className="max-w-5xl w-full mx-auto px-4 mt-6 print:mt-0 print:px-0">
-                        {/* --- Section 1: Global Inputs (อยู่หน้า 1) --- */}
-                        <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden mb-6 print:shadow-none print:border-none print:mb-6 print:break-inside-avoid">
-                            <div className="bg-blue-50 border-b border-blue-100 px-6 py-3 print:bg-transparent print:border-b-2 print:border-slate-800 print:px-0">
-                                <h2 className="font-bold text-blue-800 flex items-center gap-2 print:text-slate-800">
+                        {/* --- Section 1: Global Inputs (ย่อส่วนในตอนพิมพ์เพื่อให้หน้า 1 บรรจุตารางสรุปได้) --- */}
+                        <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden mb-6 print:shadow-none print:border-none print:mb-2 print:break-inside-avoid">
+                            <div className="bg-blue-50 border-b border-blue-100 px-6 py-3 print:bg-transparent print:border-b-2 print:border-slate-800 print:px-0 print:py-1">
+                                <h2 className="font-bold text-blue-800 flex items-center gap-2 print:text-slate-800 print:text-sm">
                                     <svg className="w-5 h-5 print:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
                                     ข้อมูลนำเข้า (Global Inputs)
                                 </h2>
                             </div>
-                            {/* ปรับ Grid ตอนพิมพ์เป็น 2 คอลัมน์เพื่อไม่ให้แคบเกินไป */}
-                            <div className="p-6 grid grid-cols-1 md:grid-cols-4 print:grid-cols-2 gap-6 print:px-0 print:py-4 print:gap-y-8 print:border-b print:border-gray-200 print:pb-8">
+                            {/* ปรับเป็น 4 คอลัมน์ตอนพิมพ์ และลดช่องว่าง */}
+                            <div className="p-6 grid grid-cols-1 md:grid-cols-4 print:grid-cols-4 gap-6 print:gap-3 print:px-0 print:py-2 print:border-b print:border-gray-200 print:pb-3">
+                                
                                 {/* Column 1: Material */}
-                                <div className="space-y-4">
-                                    <h3 className="text-sm font-semibold text-gray-500 uppercase border-b pb-1">วัสดุ (Material)</h3>
+                                <div className="space-y-4 print:space-y-2">
+                                    <h3 className="text-sm print:text-xs font-semibold text-gray-500 uppercase border-b pb-1 print:pb-0">ทั่วไปและวัสดุ</h3>
                                     <div>
-                                        <label className="block text-xs text-gray-600 mb-1">กำลังอัดคอนกรีต, f'<sub>c</sub> (ksc)</label>
-                                        <input type="number" name="fc" value={inputs.fc} onChange={handleInputChange} className="w-full px-3 py-2 border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
+                                        <label className="block text-xs print:text-[10px] text-gray-600 mb-1 print:mb-0.5">ชื่อ Member</label>
+                                        <input type="text" name="memberName" value={inputs.memberName} onChange={handleInputChange} placeholder="ระบุชื่อจุดต่อ..." className="w-full px-3 py-2 print:px-2 print:py-1 print:text-xs border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
                                     </div>
                                     <div>
-                                        <label className="block text-xs text-gray-600 mb-1">กำลังครากเหล็กคาน, f<sub>y</sub> (ksc)</label>
-                                        <input type="number" name="fy" value={inputs.fy} onChange={handleInputChange} className="w-full px-3 py-2 border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
+                                        <label className="block text-xs print:text-[10px] text-gray-600 mb-1 print:mb-0.5">กำลังอัดคอนกรีต, f'<sub>c</sub> (ksc)</label>
+                                        <input type="number" name="fc" value={inputs.fc} onChange={handleInputChange} className="w-full px-3 py-2 print:px-2 print:py-1 print:text-xs border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs print:text-[10px] text-gray-600 mb-1 print:mb-0.5">กำลังครากเหล็กคาน, f<sub>y</sub> (ksc)</label>
+                                        <input type="number" name="fy" value={inputs.fy} onChange={handleInputChange} className="w-full px-3 py-2 print:px-2 print:py-1 print:text-xs border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
                                     </div>
                                 </div>
 
                                 {/* Column 2: Geometry */}
-                                <div className="space-y-4">
-                                    <h3 className="text-sm font-semibold text-gray-500 uppercase border-b pb-1">ขนาดเสา (Column Size)</h3>
+                                <div className="space-y-4 print:space-y-2">
+                                    <h3 className="text-sm print:text-xs font-semibold text-gray-500 uppercase border-b pb-1 print:pb-0">ขนาดเสา (Column)</h3>
                                     <div>
-                                        <label className="block text-xs text-gray-600 mb-1">ความกว้าง, b (cm)</label>
-                                        <input type="number" name="colWidth" value={inputs.colWidth} onChange={handleInputChange} className="w-full px-3 py-2 border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
+                                        <label className="block text-xs print:text-[10px] text-gray-600 mb-1 print:mb-0.5">ความกว้าง, b (cm)</label>
+                                        <input type="number" name="colWidth" value={inputs.colWidth} onChange={handleInputChange} className="w-full px-3 py-2 print:px-2 print:py-1 print:text-xs border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
                                     </div>
                                     <div>
-                                        <label className="block text-xs text-gray-600 mb-1">ความลึก, h (cm)</label>
-                                        <input type="number" name="colDepth" value={inputs.colDepth} onChange={handleInputChange} className="w-full px-3 py-2 border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
+                                        <label className="block text-xs print:text-[10px] text-gray-600 mb-1 print:mb-0.5">ความลึก, h (cm)</label>
+                                        <input type="number" name="colDepth" value={inputs.colDepth} onChange={handleInputChange} className="w-full px-3 py-2 print:px-2 print:py-1 print:text-xs border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
                                     </div>
                                 </div>
 
                                 {/* Column 3: Forces & Rebars */}
-                                <div className="space-y-4">
-                                    <h3 className="text-sm font-semibold text-gray-500 uppercase border-b pb-1">แรงและเหล็กคาน</h3>
+                                <div className="space-y-4 print:space-y-1">
+                                    <h3 className="text-sm print:text-xs font-semibold text-gray-500 uppercase border-b pb-1 print:pb-0">แรงและเหล็กคาน</h3>
                                     
-                                    <div className="bg-gray-50 p-3 rounded-md border border-gray-200">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <label className="block text-xs font-bold text-gray-700">เหล็กบน (Top Rebar)</label>
+                                    <div className="bg-gray-50 p-3 print:p-1.5 rounded-md border border-gray-200 print:border-gray-300">
+                                        <div className="flex justify-between items-center mb-2 print:mb-1">
+                                            <label className="block text-xs print:text-[10px] font-bold text-gray-700">เหล็กบน (Top Rebar)</label>
                                             <button type="button" onClick={() => addRebarLayer('topRebars')} className="text-[10px] bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 print:hidden flex items-center transition-colors">+ เพิ่มชั้น</button>
                                         </div>
                                         {inputs.topRebars.map((rebar, index) => (
-                                            <div key={rebar.id} className="flex gap-2 mb-2 items-end">
+                                            <div key={rebar.id} className="flex gap-2 mb-2 print:mb-1 items-end">
                                                 <div className="flex-1">
-                                                    {index === 0 && <label className="block text-[10px] text-gray-500 mb-1">จำนวน (เส้น)</label>}
-                                                    <input type="number" value={rebar.count} onChange={(e) => updateRebar('topRebars', rebar.id, 'count', e.target.value)} min="1" className="w-full px-2 py-1.5 text-sm border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
+                                                    {index === 0 && <label className="block text-[10px] print:text-[8px] text-gray-500 mb-1 print:mb-0">จำนวน</label>}
+                                                    <input type="number" value={rebar.count} onChange={(e) => updateRebar('topRebars', rebar.id, 'count', e.target.value)} min="1" className="w-full px-2 py-1.5 print:py-0.5 print:px-1 text-sm print:text-xs border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
                                                 </div>
                                                 <div className="flex-1">
-                                                    {index === 0 && <label className="block text-[10px] text-gray-500 mb-1">ขนาด</label>}
-                                                    <select value={rebar.size} onChange={(e) => updateRebar('topRebars', rebar.id, 'size', e.target.value)} className="w-full px-2 py-1.5 text-sm border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                                                    {index === 0 && <label className="block text-[10px] print:text-[8px] text-gray-500 mb-1 print:mb-0">ขนาด</label>}
+                                                    <select value={rebar.size} onChange={(e) => updateRebar('topRebars', rebar.id, 'size', e.target.value)} className="w-full px-2 py-1.5 print:py-0.5 print:px-1 text-sm print:text-xs border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition">
                                                         <option value="12">DB12</option>
                                                         <option value="16">DB16</option>
                                                         <option value="20">DB20</option>
@@ -299,25 +311,25 @@
                                                 )}
                                             </div>
                                         ))}
-                                        <div className="text-[12px] text-right text-blue-700 font-mono bg-blue-100/50 p-1.5 rounded border border-blue-100 print:bg-transparent print:border-none print:p-0">
+                                        <div className="text-[12px] print:text-[10px] text-right text-blue-700 font-mono bg-blue-100/50 p-1.5 print:p-0.5 rounded border border-blue-100 print:bg-transparent print:border-none">
                                             A<sub>s1</sub> = {results.as1.toFixed(2)} cm&sup2;
                                         </div>
                                     </div>
 
-                                    <div className="bg-gray-50 p-3 rounded-md border border-gray-200">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <label className="block text-xs font-bold text-gray-700">เหล็กล่าง (Bottom Rebar)</label>
+                                    <div className="bg-gray-50 p-3 print:p-1.5 rounded-md border border-gray-200 print:border-gray-300">
+                                        <div className="flex justify-between items-center mb-2 print:mb-1">
+                                            <label className="block text-xs print:text-[10px] font-bold text-gray-700">เหล็กล่าง (Bot Rebar)</label>
                                             <button type="button" onClick={() => addRebarLayer('botRebars')} className="text-[10px] bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 print:hidden flex items-center transition-colors">+ เพิ่มชั้น</button>
                                         </div>
                                         {inputs.botRebars.map((rebar, index) => (
-                                            <div key={rebar.id} className="flex gap-2 mb-2 items-end">
+                                            <div key={rebar.id} className="flex gap-2 mb-2 print:mb-1 items-end">
                                                 <div className="flex-1">
-                                                    {index === 0 && <label className="block text-[10px] text-gray-500 mb-1">จำนวน (เส้น)</label>}
-                                                    <input type="number" value={rebar.count} onChange={(e) => updateRebar('botRebars', rebar.id, 'count', e.target.value)} min="1" className="w-full px-2 py-1.5 text-sm border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
+                                                    {index === 0 && <label className="block text-[10px] print:text-[8px] text-gray-500 mb-1 print:mb-0">จำนวน</label>}
+                                                    <input type="number" value={rebar.count} onChange={(e) => updateRebar('botRebars', rebar.id, 'count', e.target.value)} min="1" className="w-full px-2 py-1.5 print:py-0.5 print:px-1 text-sm print:text-xs border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
                                                 </div>
                                                 <div className="flex-1">
-                                                    {index === 0 && <label className="block text-[10px] text-gray-500 mb-1">ขนาด</label>}
-                                                    <select value={rebar.size} onChange={(e) => updateRebar('botRebars', rebar.id, 'size', e.target.value)} className="w-full px-2 py-1.5 text-sm border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition">
+                                                    {index === 0 && <label className="block text-[10px] print:text-[8px] text-gray-500 mb-1 print:mb-0">ขนาด</label>}
+                                                    <select value={rebar.size} onChange={(e) => updateRebar('botRebars', rebar.id, 'size', e.target.value)} className="w-full px-2 py-1.5 print:py-0.5 print:px-1 text-sm print:text-xs border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition">
                                                         <option value="12">DB12</option>
                                                         <option value="16">DB16</option>
                                                         <option value="20">DB20</option>
@@ -333,118 +345,93 @@
                                                 )}
                                             </div>
                                         ))}
-                                        <div className="text-[12px] text-right text-blue-700 font-mono bg-blue-100/50 p-1.5 rounded border border-blue-100 print:bg-transparent print:border-none print:p-0">
+                                        <div className="text-[12px] print:text-[10px] text-right text-blue-700 font-mono bg-blue-100/50 p-1.5 print:p-0.5 rounded border border-blue-100 print:bg-transparent print:border-none">
                                             A<sub>s2</sub> = {results.as2.toFixed(2)} cm&sup2;
                                         </div>
                                     </div>
 
                                     <div>
-                                        <label className="block text-xs text-gray-600 mb-1 mt-3">แรงเฉือนเสา, V<sub>col</sub> (Ton)</label>
-                                        <input type="number" name="vCol" value={inputs.vCol} onChange={handleInputChange} className="w-full px-3 py-2 border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
+                                        <label className="block text-xs print:text-[10px] text-gray-600 mb-1 mt-3 print:mt-1">แรงเฉือนเสา V<sub>col</sub> (Ton)</label>
+                                        <input type="number" name="vCol" value={inputs.vCol} onChange={handleInputChange} className="w-full px-3 py-2 print:px-2 print:py-1 print:text-xs border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
                                     </div>
                                 </div>
 
                                 {/* Column 4: Ties */}
-                                <div className="space-y-4">
-                                    <h3 className="text-sm font-semibold text-gray-500 uppercase border-b pb-1">เหล็กปลอก (Transverse)</h3>
+                                <div className="space-y-4 print:space-y-2">
+                                    <h3 className="text-sm print:text-xs font-semibold text-gray-500 uppercase border-b pb-1 print:pb-0">เหล็กปลอก (Ties)</h3>
                                     <div>
-                                        <label className="block text-xs text-gray-600 mb-1">f<sub>yt</sub> เหล็กปลอก (ksc)</label>
-                                        <input type="number" name="fyt" value={inputs.fyt} onChange={handleInputChange} className="w-full px-3 py-2 border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
+                                        <label className="block text-xs print:text-[10px] text-gray-600 mb-1 print:mb-0.5">f<sub>yt</sub> เหล็กปลอก (ksc)</label>
+                                        <input type="number" name="fyt" value={inputs.fyt} onChange={handleInputChange} className="w-full px-3 py-2 print:px-2 print:py-1 print:text-xs border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
                                     </div>
                                     <div className="grid grid-cols-2 gap-2">
                                         <div>
-                                            <label className="block text-xs text-gray-600 mb-1">ขนาด (mm)</label>
-                                            <input type="number" name="tieSize" value={inputs.tieSize} onChange={handleInputChange} className="w-full px-3 py-2 border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
+                                            <label className="block text-xs print:text-[10px] text-gray-600 mb-1 print:mb-0.5">ขนาด (mm)</label>
+                                            <input type="number" name="tieSize" value={inputs.tieSize} onChange={handleInputChange} className="w-full px-3 py-2 print:px-2 print:py-1 print:text-xs border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
                                         </div>
                                         <div>
-                                            <label className="block text-xs text-gray-600 mb-1">จำนวนขา</label>
-                                            <input type="number" name="tieLegs" value={inputs.tieLegs} onChange={handleInputChange} className="w-full px-3 py-2 border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
+                                            <label className="block text-xs print:text-[10px] text-gray-600 mb-1 print:mb-0.5">จำนวนขา</label>
+                                            <input type="number" name="tieLegs" value={inputs.tieLegs} onChange={handleInputChange} className="w-full px-3 py-2 print:px-2 print:py-1 print:text-xs border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
                                         </div>
                                     </div>
                                     <div>
-                                        <label className="block text-xs text-gray-600 mb-1">ระยะเรียง, s (cm)</label>
-                                        <input type="number" name="tieSpacing" value={inputs.tieSpacing} onChange={handleInputChange} className="w-full px-3 py-2 border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
+                                        <label className="block text-xs print:text-[10px] text-gray-600 mb-1 print:mb-0.5">ระยะเรียง, s (cm)</label>
+                                        <input type="number" name="tieSpacing" value={inputs.tieSpacing} onChange={handleInputChange} className="w-full px-3 py-2 print:px-2 print:py-1 print:text-xs border rounded-md focus:ring-blue-500 focus:border-blue-500 outline-none transition" />
                                     </div>
                                 </div>
                             </div>
                         </div>
 
                         {/* --- Section 2 & 3: Tabs and Contents --- */}
-                        <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden print:shadow-none print:border-none print:overflow-visible print:break-before-page">
+                        <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden print:shadow-none print:border-none print:overflow-visible">
                             {/* Tabs Header */}
                             <div className="flex overflow-x-auto border-b border-gray-200 bg-gray-50 print:hidden">
-                                <button 
-                                    onClick={() => setActiveTab('summary')}
-                                    className={`px-6 py-4 text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'summary' ? 'text-blue-600 border-b-2 border-blue-600 bg-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
-                                >
-                                    ตารางสรุปผล
-                                </button>
-                                <button 
-                                    onClick={() => setActiveTab('vj')}
-                                    className={`px-6 py-4 text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'vj' ? 'text-blue-600 border-b-2 border-blue-600 bg-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
-                                >
-                                    แรงเฉือนที่ข้อต่อ (V<sub>j</sub>)
-                                </button>
-                                <button 
-                                    onClick={() => setActiveTab('vn')}
-                                    className={`px-6 py-4 text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'vn' ? 'text-blue-600 border-b-2 border-blue-600 bg-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
-                                >
-                                    กำลังรับแรงเฉือน (V<sub>n</sub>)
-                                </button>
-                                <button 
-                                    onClick={() => setActiveTab('av')}
-                                    className={`px-6 py-4 text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'av' ? 'text-blue-600 border-b-2 border-blue-600 bg-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
-                                >
-                                    เหล็กปลอกขั้นต่ำ
-                                </button>
-                                <button 
-                                    onClick={() => setActiveTab('manual')}
-                                    className={`px-6 py-4 text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'manual' ? 'text-blue-600 border-b-2 border-blue-600 bg-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}
-                                >
-                                    คู่มือและตัวแปร
-                                </button>
+                                <button onClick={() => setActiveTab('summary')} className={`px-6 py-4 text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'summary' ? 'text-blue-600 border-b-2 border-blue-600 bg-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}>ตารางสรุปผล</button>
+                                <button onClick={() => setActiveTab('vj')} className={`px-6 py-4 text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'vj' ? 'text-blue-600 border-b-2 border-blue-600 bg-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}>แรงเฉือนที่ข้อต่อ (V<sub>j</sub>)</button>
+                                <button onClick={() => setActiveTab('vn')} className={`px-6 py-4 text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'vn' ? 'text-blue-600 border-b-2 border-blue-600 bg-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}>กำลังรับแรงเฉือน (V<sub>n</sub>)</button>
+                                <button onClick={() => setActiveTab('av')} className={`px-6 py-4 text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'av' ? 'text-blue-600 border-b-2 border-blue-600 bg-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}>เหล็กปลอกขั้นต่ำ</button>
+                                <button onClick={() => setActiveTab('manual')} className={`px-6 py-4 text-sm font-bold whitespace-nowrap transition-colors ${activeTab === 'manual' ? 'text-blue-600 border-b-2 border-blue-600 bg-white' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'}`}>คู่มือและตัวแปร</button>
                             </div>
 
-                            {/* Tab Body (เอา print:break-inside-avoid ออกจากกล่องครอบขนาดใหญ่ เพื่อให้หน้ากระดาษแบ่งได้ถูกต้อง) */}
+                            {/* Tab Body */}
                             <div className="p-6 bg-gray-50/50 print:p-0 print:bg-transparent">
                                 
-                                {/* 1. Summary Content */}
-                                <div className={`${activeTab === 'summary' ? 'block' : 'hidden'} print:block print:mb-8`}>
-                                    <div className="space-y-6">
-                                        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 print:break-inside-avoid print:shadow-none print:border-gray-300 print:p-4">
-                                            <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2 print:border-slate-800">ตารางเปรียบเทียบกำลังรับแรงเฉือนในข้อต่อ</h3>
+                                {/* 1. Summary Content (หน้า 1 พร้อมข้อมูลนำเข้า) */}
+                                <div className={`${activeTab === 'summary' ? 'block' : 'hidden'} print:block print:mb-2 print:break-inside-avoid`}>
+                                    <div className="space-y-6 print:space-y-4">
+                                        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 print:shadow-none print:border-none print:p-0">
+                                            <h3 className="text-lg print:text-base font-bold text-gray-800 mb-4 print:mb-2 border-b pb-2 print:border-slate-800">ตารางเปรียบเทียบกำลังรับแรงเฉือนในข้อต่อ</h3>
                                             <div className="overflow-x-auto print:overflow-visible">
-                                                <table className="min-w-full divide-y divide-gray-200">
+                                                <table className="min-w-full divide-y divide-gray-200 print:border print:border-gray-300">
                                                     <thead className="bg-gray-50 print:bg-gray-100">
                                                         <tr>
-                                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider print:text-black">ประเภทข้อต่อ (การยึดรั้ง)</th>
-                                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider print:text-black">แรงเฉือนที่เกิดขึ้น V<sub>j</sub> (Ton)</th>
-                                                            <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider print:text-black">กำลังรับได้ &phi;V<sub>n</sub> (Ton)</th>
-                                                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider print:text-black">สถานะการออกแบบ (V<sub>j</sub> &le; &phi;V<sub>n</sub>)</th>
+                                                            <th className="px-6 py-3 print:px-4 print:py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider print:text-black print:border-b print:border-gray-300">ประเภทข้อต่อ (การยึดรั้ง)</th>
+                                                            <th className="px-6 py-3 print:px-4 print:py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider print:text-black print:border-b print:border-gray-300">แรงเฉือนที่เกิดขึ้น V<sub>j</sub> (Ton)</th>
+                                                            <th className="px-6 py-3 print:px-4 print:py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider print:text-black print:border-b print:border-gray-300">กำลังรับได้ &phi;V<sub>n</sub> (Ton)</th>
+                                                            <th className="px-6 py-3 print:px-4 print:py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider print:text-black print:border-b print:border-gray-300">สถานะการออกแบบ (V<sub>j</sub> &le; &phi;V<sub>n</sub>)</th>
                                                         </tr>
                                                     </thead>
-                                                    <tbody className="bg-white divide-y divide-gray-200">
+                                                    <tbody className="bg-white divide-y divide-gray-200 print:divide-gray-300">
                                                         <tr>
-                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">ยึดรั้งจากคาน 4 ด้าน (Interior)</td>
-                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-red-600">{results.vjInt.toFixed(2)}</td>
-                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-blue-600">{results.phiVn4.toFixed(2)}</td>
-                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-gray-900">ยึดรั้งจากคาน 4 ด้าน (Interior)</td>
+                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-right font-medium text-red-600">{results.vjInt.toFixed(2)}</td>
+                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-right text-blue-600">{results.phiVn4.toFixed(2)}</td>
+                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-center">
                                                                 <StatusBadge isPass={results.vjInt <= results.phiVn4} />
                                                             </td>
                                                         </tr>
-                                                        <tr className="bg-gray-50">
-                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">ยึดรั้งจากคาน 2-3 ด้าน (Exterior)</td>
-                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-red-600">{results.vjInt.toFixed(2)}</td>
-                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-blue-600">{results.phiVn3.toFixed(2)}</td>
-                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                                                        <tr className="bg-gray-50 print:bg-white">
+                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-gray-900">ยึดรั้งจากคาน 2-3 ด้าน (Exterior)</td>
+                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-right font-medium text-red-600">{results.vjInt.toFixed(2)}</td>
+                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-right text-blue-600">{results.phiVn3.toFixed(2)}</td>
+                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-center">
                                                                 <StatusBadge isPass={results.vjInt <= results.phiVn3} />
                                                             </td>
                                                         </tr>
                                                         <tr>
-                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">ข้อต่ออื่นๆ (Corner/Roof)</td>
-                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right font-medium text-red-600">{results.vjExt.toFixed(2)}</td>
-                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-right text-blue-600">{results.phiVnOther.toFixed(2)}</td>
-                                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
+                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-gray-900">ข้อต่ออื่นๆ (Corner/Roof)</td>
+                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-right font-medium text-red-600">{results.vjExt.toFixed(2)}</td>
+                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-right text-blue-600">{results.phiVnOther.toFixed(2)}</td>
+                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-center">
                                                                 <StatusBadge isPass={results.vjExt <= results.phiVnOther} />
                                                             </td>
                                                         </tr>
@@ -453,20 +440,19 @@
                                             </div>
                                         </div>
 
-                                        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 print:break-inside-avoid print:shadow-none print:border-gray-300 print:p-4">
-                                            <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2 print:border-slate-800">สรุปปริมาณเหล็กปลอกในข้อต่อ</h3>
-                                            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-md print:bg-transparent print:border print:border-gray-300">
+                                        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 print:shadow-none print:border-none print:p-0">
+                                            <h3 className="text-lg print:text-base font-bold text-gray-800 mb-4 print:mb-2 border-b pb-2 print:border-slate-800">สรุปปริมาณเหล็กปลอกในข้อต่อ</h3>
+                                            <div className="flex items-center justify-between p-4 print:p-3 bg-gray-50 rounded-md print:bg-transparent print:border print:border-gray-300">
                                                 <div>
-                                                    <p className="text-sm text-gray-600">ต้องการขั้นต่ำ (A<sub>v,min</sub>)</p>
-                                                    <p className="text-xl font-bold">{results.avMin.toFixed(2)} <span className="text-sm font-normal">cm&sup2;/ระยะ s</span></p>
+                                                    <p className="text-sm print:text-xs text-gray-600">ต้องการขั้นต่ำ (A<sub>v,min</sub>)</p>
+                                                    <p className="text-xl print:text-lg font-bold">{results.avMin.toFixed(2)} <span className="text-sm print:text-xs font-normal">cm&sup2;/ระยะ s</span></p>
                                                 </div>
-                                                <div className="text-2xl text-gray-400">&le;</div>
+                                                <div className="text-2xl print:text-xl text-gray-400">&le;</div>
                                                 <div>
-                                                    <p className="text-sm text-gray-600">จัดให้จริง ({inputs.tieLegs}-DB{inputs.tieSize} @{inputs.tieSpacing})</p>
-                                                    <p className="text-xl font-bold text-blue-600">{results.avProv.toFixed(2)} <span className="text-sm font-normal">cm&sup2;</span></p>
+                                                    <p className="text-sm print:text-xs text-gray-600">จัดให้จริง ({inputs.tieLegs}-DB{inputs.tieSize} @{inputs.tieSpacing})</p>
+                                                    <p className="text-xl print:text-lg font-bold text-blue-600">{results.avProv.toFixed(2)} <span className="text-sm print:text-xs font-normal">cm&sup2;</span></p>
                                                 </div>
                                                 <div>
-                                                    <p className="text-sm text-gray-600">&nbsp;</p>
                                                     <StatusBadge isPass={results.avProv >= results.avMin} />
                                                 </div>
                                             </div>
@@ -474,9 +460,9 @@
                                     </div>
                                 </div>
 
-                                {/* 2. Vj Content */}
-                                <div className={`${activeTab === 'vj' ? 'block' : 'hidden'} print:block print:mb-8`}>
-                                    <div className="space-y-6">
+                                {/* 2. Vj Content (บังคับขึ้นหน้า 2) */}
+                                <div className={`${activeTab === 'vj' ? 'block' : 'hidden'} print:block print:break-before-page`}>
+                                    <div className="space-y-6 print:pt-4">
                                         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 print:break-inside-avoid print:shadow-none print:border-gray-300 print:p-4">
                                             <h3 className="text-lg font-bold text-gray-800 mb-2 border-b pb-2 print:border-slate-800">
                                                 แรงเฉือนข้อต่อภายใน (Interior / Continuous Joint)
@@ -541,10 +527,9 @@
                                     </div>
                                 </div>
 
-                                {/* 3. Vn Content */}
-                                <div className={`${activeTab === 'vn' ? 'block' : 'hidden'} print:block print:mb-8`}>
-                                    {/* นำ border ของคอนเทนเนอร์หลักออกเวลาพิมพ์ เพื่อให้แบ่งหน้าได้สวยงามและไม่ติดกรอบซ้อน */}
-                                    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 print:shadow-none print:border-none print:p-0 print:bg-transparent">
+                                {/* 3. Vn Content (บังคับขึ้นหน้า 3) */}
+                                <div className={`${activeTab === 'vn' ? 'block' : 'hidden'} print:block print:break-before-page`}>
+                                    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 print:shadow-none print:border-none print:p-0 print:bg-transparent print:pt-4">
                                         <div className="print:break-inside-avoid print:mb-6">
                                             <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2 print:border-slate-800">การคำนวณกำลังรับแรงเฉือนระบุ (V<sub>n</sub>)</h3>
                                             
@@ -597,9 +582,9 @@
                                     </div>
                                 </div>
 
-                                {/* 4. Av Content */}
-                                <div className={`${activeTab === 'av' ? 'block' : 'hidden'} print:block print:mb-8`}>
-                                    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 print:break-inside-avoid print:shadow-none print:border-gray-300 print:p-4">
+                                {/* 4. Av Content (บังคับขึ้นหน้า 4) */}
+                                <div className={`${activeTab === 'av' ? 'block' : 'hidden'} print:block print:break-before-page`}>
+                                    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 print:break-inside-avoid print:shadow-none print:border-gray-300 print:p-4 print:mt-4">
                                         <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2 print:border-slate-800">
                                             เหล็กปลอกขั้นต่ำ (Minimum Transverse Reinforcement)
                                             <span className="text-sm font-normal text-blue-600 ml-2 print:text-gray-600">[มยผ. 1301/1302-61 ข้อ 5.2.7.4.4]</span>
@@ -648,9 +633,9 @@
                                     </div>
                                 </div>
 
-                                {/* 5. Manual Content (แยกหน้าสุดท้าย) */}
-                                <div className={`${activeTab === 'manual' ? 'block' : 'hidden'} print:block print:mb-8 print:break-before-page`}>
-                                    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 print:shadow-none print:border-none print:p-0 space-y-8">
+                                {/* 5. Manual Content (หน้าสุดท้าย) */}
+                                <div className={`${activeTab === 'manual' ? 'block' : 'hidden'} print:block print:break-before-page`}>
+                                    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 print:shadow-none print:border-none print:p-0 space-y-8 print:pt-4">
                                         {/* Section: Variables */}
                                         <div className="print:break-inside-avoid">
                                             <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2 print:border-slate-800">คำอธิบายตัวแปร (Variables)</h3>
