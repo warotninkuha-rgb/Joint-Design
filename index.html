@@ -106,10 +106,25 @@
                 fy: 4000,      // ksc
                 fyt: 2400,     // ksc (สำหรับเหล็กปลอก)
                 
-                // ขนาดหน้าตัด
-                colWidth: 20,  // cm (b)
+                // ขนาดหน้าตัดเสา
+                // colDepth = h  = ด้านเสาที่ "ขนาน" ทิศทางแรงเฉือนที่พิจารณา (= ความลึกข้อต่อ)
+                // colWidth = bc = ด้านเสาที่ "ตั้งฉาก" ทิศทางแรงเฉือนที่พิจารณา
+                colWidth: 20,  // cm (bc)
                 colDepth: 20,  // cm (h)
-                
+
+                // ขนาดคานที่เข้ามาบรรจบที่ข้อต่อ (w = ความกว้างคาน, d = ความลึกคาน)
+                // x1, x2 = คานในทิศทางแรงเฉือน (สร้างแรงเฉือนในข้อต่อ)
+                // y1, y2 = คานตั้งฉากทิศทางแรงเฉือน (คานขวาง)
+                beams: {
+                    x1: { on: true, w: 20, d: 40 },
+                    x2: { on: true, w: 20, d: 40 },
+                    y1: { on: true, w: 20, d: 40 },
+                    y2: { on: true, w: 20, d: 40 }
+                },
+                beamEcc: 0,        // cm, ระยะเยื้องศูนย์คานทิศทางแรงเฉือนเทียบกับแกนเสา
+                ajMethod: 'fig',   // 'fig' = ตามรูปที่ 5.2-7 | 'full' = bc x h (แบบเดิม)
+                c1Mode: 'max',     // 'max' | 'h' | 'b'
+
                 // แรงและเหล็กเสริม
                 topRebars: [{ id: 1, count: 2, size: 12 }], // เหล็กบน (รองรับหลายชั้น)
                 botRebars: [{ id: 2, count: 2, size: 12 }], // เหล็กล่าง (รองรับหลายชั้น)
@@ -125,50 +140,149 @@
 
             // --- Calculations ---
             const results = useMemo(() => {
-                const { fc, fy, fyt, colWidth, colDepth, topRebars, botRebars, vCol, tieSize, tieLegs, tieSpacing } = inputs;
-                
-                // ตัวคูณลดกำลัง (Phi) สำหรับแรงเฉือน
-                const phi = 0.85; 
+                const { fc, fy, fyt, colWidth, colDepth, beams, beamEcc, ajMethod, c1Mode,
+                        topRebars, botRebars, vCol, tieSize, tieLegs, tieSpacing } = inputs;
+
+                // ตัวคูณลดกำลัง (Phi) สำหรับแรงเฉือน [ข้อ 5.2.7.5.1]
+                const phi = 0.85;
 
                 // คำนวณพื้นที่หน้าตัดเหล็ก (As1, As2) จากทุกชั้น
                 const calculateArea = (rebars) => rebars.reduce((sum, r) => sum + r.count * (Math.PI * Math.pow((r.size / 10) / 2, 2)), 0);
                 const as1 = calculateArea(topRebars); // cm2
                 const as2 = calculateArea(botRebars); // cm2
 
-                // 1. แรงเฉือนที่เกิดขึ้นในข้อต่อ (Vj)
+                // =====================================================================
+                // 0. การจำแนกประเภทข้อต่อจากขนาดคาน [ข้อ 5.2.7.5.3 ย่อหน้าท้าย]
+                //    "จะถือว่าข้อต่อได้รับการยึดรัดจากคานก็ต่อเมื่อคานที่เข้ามายึดรัดนั้น
+                //     (1) มีความกว้างไม่น้อยกว่า 3/4 ของความกว้างเสาด้านที่คานเข้ามาบรรจบ และ
+                //     (2) มีความลึกไม่น้อยกว่า 3/4 ของความลึกคานตัวที่ลึกที่สุดที่เข้ามาบรรจบที่ข้อต่อ"
+                // =====================================================================
+                const hJoint = colDepth;   // ด้านเสาขนานทิศแรงเฉือน = ความลึกข้อต่อ (h)
+                const cPerp  = colWidth;   // ด้านเสาตั้งฉากทิศแรงเฉือน (bc)
+
+                const faceDefs = [
+                    { key: 'x1', axis: 'X', label: 'คานด้าน X+', note: 'ขนานทิศแรงเฉือน' },
+                    { key: 'x2', axis: 'X', label: 'คานด้าน X−', note: 'ขนานทิศแรงเฉือน' },
+                    { key: 'y1', axis: 'Y', label: 'คานด้าน Y+', note: 'คานขวาง (ตั้งฉาก)' },
+                    { key: 'y2', axis: 'Y', label: 'คานด้าน Y−', note: 'คานขวาง (ตั้งฉาก)' }
+                ];
+
+                // ความลึกคานที่ลึกที่สุดที่เข้ามาบรรจบที่ข้อต่อ
+                const maxBeamDepth = faceDefs.reduce((m, f) => (beams[f.key].on ? Math.max(m, beams[f.key].d) : m), 0);
+                const reqDepth = 0.75 * maxBeamDepth;
+
+                const TOL = 1e-9;
+                const faceResults = faceDefs.map(f => {
+                    const b = beams[f.key];
+                    // ความกว้างเสา "ด้านที่คานเข้ามาบรรจบ"
+                    //  - คานแกน X ชนหน้าเสาที่มีความกว้าง = ด้านเสาตั้งฉากแกน X = bc
+                    //  - คานแกน Y ชนหน้าเสาที่มีความกว้าง = ด้านเสาตั้งฉากแกน Y = h
+                    const colFaceWidth = f.axis === 'X' ? cPerp : hJoint;
+                    const reqWidth = 0.75 * colFaceWidth;
+                    const okW = b.on && (b.w >= reqWidth - TOL);
+                    const okD = b.on && (b.d >= reqDepth - TOL);
+                    return {
+                        ...f, on: b.on, w: b.w, d: b.d,
+                        colFaceWidth, reqWidth, reqDepth,
+                        okW, okD, confining: b.on && okW && okD
+                    };
+                });
+
+                const nPresent  = faceResults.filter(f => f.on).length;
+                const nConfining = faceResults.filter(f => f.confining).length;
+                const confPairX = faceResults[0].confining && faceResults[1].confining;
+                const confPairY = faceResults[2].confining && faceResults[3].confining;
+
+                let jointClass, jointCoef, jointTitle, jointClause;
+                if (nConfining === 4) {
+                    jointClass = 'ก'; jointCoef = 5.4;
+                    jointTitle = 'ข้อต่อที่ได้รับการยึดรัดจากคานทั้ง 4 ด้าน';
+                    jointClause = '5.2.7.5.3 (1) / สมการ 5.2-8';
+                } else if (nConfining === 3 || (nConfining === 2 && (confPairX || confPairY))) {
+                    jointClass = 'ข'; jointCoef = 4.0;
+                    jointTitle = 'ข้อต่อที่ได้รับการยึดรัดจากคาน 3 ด้าน หรือคาน 2 ด้านที่อยู่ตรงข้ามกัน';
+                    jointClause = '5.2.7.5.3 (2) / สมการ 5.2-9';
+                } else {
+                    jointClass = 'ค'; jointCoef = 3.2;
+                    jointTitle = 'ข้อต่ออื่น ๆ';
+                    jointClause = '5.2.7.5.3 (3) / สมการ 5.2-10';
+                }
+
+                // =====================================================================
+                // 1. พื้นที่ต้านแรงเฉือนประสิทธิผล Aj [รูปที่ 5.2-7]
+                //    ความกว้างประสิทธิผล bj = min( bc , b + h , b + 2*x1 )
+                //    โดย b = ความกว้างคานที่ก่อให้เกิดแรงเฉือน, x1 = ระยะจากขอบคานถึงขอบเสา (ด้านที่น้อยกว่า)
+                // =====================================================================
+                const xBeamsOn = faceResults.filter(f => f.axis === 'X' && f.on);
+                const bBeam = xBeamsOn.length ? Math.min(...xBeamsOn.map(f => f.w)) : 0;
+                const ecc = Math.abs(beamEcc);
+                const x1 = Math.max(0, (cPerp - bBeam) / 2 - ecc);
+                const x2 = Math.max(0, (cPerp - bBeam) / 2 + ecc);
+                const bjCandidates = { colLimit: cPerp, bPlusH: bBeam + hJoint, bPlus2x1: bBeam + 2 * x1 };
+                const bjFig = bBeam > 0 ? Math.min(cPerp, bBeam + hJoint, bBeam + 2 * x1) : cPerp;
+                const bjUsed = (ajMethod === 'fig' && bBeam > 0) ? bjFig : cPerp;
+                const aj      = bjUsed * hJoint;   // cm2 (ที่ใช้จริง)
+                const ajFull  = cPerp * hJoint;    // cm2 (แบบเดิม: เต็มหน้าตัดเสา)
+                const ajFig   = bjFig * hJoint;    // cm2 (ตามรูปที่ 5.2-7)
+
+                // =====================================================================
+                // 2. แรงเฉือนที่เกิดขึ้นในข้อต่อ (Vj) [ข้อ 5.2.7.5.2 / รูปที่ 5.2-5]
+                // =====================================================================
                 const forceRebar1 = (as1 * fy) / 1000; // Ton
                 const forceRebar2 = (as2 * fy) / 1000; // Ton
-                
-                // 1.1 แรงเฉือนแบบข้อต่อภายใน (Continuous Joint)
-                const vjInt = forceRebar1 + forceRebar2 - vCol; // Ton
-                
-                // 1.2 แรงเฉือนแบบข้อต่อภายนอก (Corner/Roof) เลือกใช้ As ที่มากที่สุด
+
+                const vjInt = forceRebar1 + forceRebar2 - vCol;         // คานเข้าบรรจบ 2 ด้านในทิศแรงเฉือน
                 const maxForceRebar = Math.max(forceRebar1, forceRebar2);
-                const vjExt = maxForceRebar - vCol; // Ton
+                const vjExt = maxForceRebar - vCol;                     // คานเข้าบรรจบด้านเดียว
 
-                // 2. พื้นที่หน้าตัดข้อต่อ (Aj)
-                const aj = colWidth * colDepth; // cm2
+                // ตัดสินจาก "การมีคาน" ในทิศทางแรงเฉือน (ไม่ใช่จากเกณฑ์ยึดรัด)
+                const isInterior = faceResults[0].on && faceResults[1].on;
+                const vjUsed = isInterior ? vjInt : vjExt;
 
-                // 3. กำลังรับแรงเฉือนระบุ (Vn) ตามรูปแบบการยึดรั้ง [หน่วย Metric: ksc -> Ton]
+                // =====================================================================
+                // 3. กำลังรับแรงเฉือนระบุ (Vn) [หน่วยเมตริก: ksc, cm -> Ton]
+                // =====================================================================
                 const sqrtFc = Math.sqrt(fc);
-                const vn4Sides = (5.4 * sqrtFc * aj) / 1000;
-                const vn3Sides = (4.0 * sqrtFc * aj) / 1000; 
-                const vnOther =  (3.2 * sqrtFc * aj) / 1000;
+                const vnOf = (coef) => (coef * sqrtFc * aj) / 1000;
+                const vn4Sides = vnOf(5.4);
+                const vn3Sides = vnOf(4.0);
+                const vnOther  = vnOf(3.2);
+                const vnUsed   = vnOf(jointCoef);
+                const phiVnUsed = phi * vnUsed;
+                const dcr = phiVnUsed > 0 ? vjUsed / phiVnUsed : 0;
+                const jointPass = vjUsed <= phiVnUsed;
 
-                // 4. เหล็กปลอกขั้นต่ำ (Av,min)
-                const bw = Math.min(colWidth, colDepth);
-                const avMin = (3.5 * bw * tieSpacing) / fyt; // cm2
-                
-                // พื้นที่เหล็กปลอกที่ใส่จริง (Av,provided)
+                // =====================================================================
+                // 4. เหล็กปลอกขั้นต่ำ (Av,min) [ข้อ 5.2.7.4.4 / สมการ 5.2-6]
+                //    Av = 3.5 * c1 * s / fy  (หน่วยเมตริก)
+                // =====================================================================
+                const c1 = c1Mode === 'h' ? hJoint : (c1Mode === 'b' ? cPerp : Math.max(hJoint, cPerp));
+                const avMin = (3.5 * c1 * tieSpacing) / fyt; // cm2
                 const areaOneTie = Math.PI * Math.pow((tieSize / 10) / 2, 2); // cm2
                 const avProv = tieLegs * areaOneTie; // cm2
+                const tieDepthReq = maxBeamDepth;   // ต้องเสริมปลอกลึกไม่น้อยกว่าคานที่ลึกที่สุด
 
-                return { 
-                    phi, vjInt, vjExt, maxForceRebar, aj, 
-                    vn4Sides, vn3Sides, vnOther, 
+                // --- ข้อความเตือน ---
+                const warnings = [];
+                if (nPresent === 0) warnings.push('ยังไม่ได้ระบุคานที่เข้ามาบรรจบที่ข้อต่อ');
+                if (xBeamsOn.length === 0) warnings.push('ไม่มีคานในทิศทางแรงเฉือนที่พิจารณา (แกน X) — ตรวจสอบการกำหนดทิศทาง');
+                if (bBeam > cPerp) warnings.push('ความกว้างคานมากกว่าความกว้างเสา — จำกัด bj ไม่เกินความกว้างเสา');
+                if (ajMethod === 'full' && bjFig < cPerp - TOL) warnings.push('เลือกใช้ Aj = bc × h ทั้งที่รูปที่ 5.2-7 ให้ bj น้อยกว่าความกว้างเสา (ไม่ปลอดภัย)');
+
+                return {
+                    phi, as1, as2, forceRebar1, forceRebar2, maxForceRebar,
+                    // จำแนกข้อต่อ
+                    faceResults, nPresent, nConfining, confPairX, confPairY,
+                    maxBeamDepth, reqDepth, jointClass, jointCoef, jointTitle, jointClause,
+                    // Aj
+                    hJoint, cPerp, bBeam, ecc, x1, x2, bjCandidates, bjFig, bjUsed, aj, ajFull, ajFig,
+                    // Vj / Vn
+                    isInterior, vjInt, vjExt, vjUsed,
+                    vn4Sides, vn3Sides, vnOther, vnUsed, phiVnUsed, dcr, jointPass,
                     phiVn4: phi * vn4Sides, phiVn3: phi * vn3Sides, phiVnOther: phi * vnOther,
-                    avMin, avProv, forceRebar1, forceRebar2,
-                    as1, as2, bw
+                    // เหล็กปลอก
+                    c1, avMin, avProv, tieDepthReq,
+                    warnings
                 };
             }, [inputs]);
 
@@ -178,6 +292,19 @@
                 setInputs(prev => ({ 
                     ...prev, 
                     [name]: type === 'text' ? value : (parseFloat(value) || 0) 
+                }));
+            };
+
+            const updateBeam = (key, field, value) => {
+                setInputs(prev => ({
+                    ...prev,
+                    beams: {
+                        ...prev.beams,
+                        [key]: {
+                            ...prev.beams[key],
+                            [field]: field === 'on' ? value : (parseFloat(value) || 0)
+                        }
+                    }
                 }));
             };
 
@@ -208,6 +335,59 @@
                     {isPass ? 'ผ่าน (Pass)' : 'ไม่ผ่าน (Fail)'}
                 </span>
             );
+
+            // --- รูปด้านบน (Plan) ของข้อต่อ วาดตามสัดส่วนจริง ---
+            const JointPlanView = () => {
+                const r = results;
+                const maxDim = Math.max(r.hJoint, r.cPerp, 1);
+                const s = 95 / maxDim;               // px ต่อ cm
+                const CX = 168, CY = 132;
+                const hw = (r.hJoint * s) / 2;       // ครึ่งความลึกข้อต่อ (แนวนอน = แกน X)
+                const hh = (r.cPerp * s) / 2;        // ครึ่งความกว้างเสา (แนวตั้ง = แกน Y)
+                const stub = 52;
+                const ey = (inputs.beamEcc || 0) * s;
+
+                const colOf = (f) => f.confining ? '#059669' : '#d97706';
+                const fillOf = (f) => f.confining ? '#d1fae5' : '#fef3c7';
+                const F = { x1: r.faceResults[0], x2: r.faceResults[1], y1: r.faceResults[2], y2: r.faceResults[3] };
+
+                return (
+                    <svg viewBox="0 0 336 268" className="w-full max-w-md mx-auto">
+                        <defs>
+                            <pattern id="ajHatch" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                                <line x1="0" y1="0" x2="0" y2="5" stroke="#1d4ed8" strokeWidth="1.2" opacity="0.55" />
+                            </pattern>
+                            <marker id="arw" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+                                <path d="M0,0 L6,3 L0,6 z" fill="#dc2626" />
+                            </marker>
+                        </defs>
+
+                        {/* คานแกน X (ทิศทางแรงเฉือน) */}
+                        {F.x1.on && <rect x={CX + hw} y={CY + ey - (F.x1.w * s) / 2} width={stub} height={F.x1.w * s} fill={fillOf(F.x1)} stroke={colOf(F.x1)} strokeWidth="1.6" />}
+                        {F.x2.on && <rect x={CX - hw - stub} y={CY + ey - (F.x2.w * s) / 2} width={stub} height={F.x2.w * s} fill={fillOf(F.x2)} stroke={colOf(F.x2)} strokeWidth="1.6" />}
+                        {/* คานแกน Y (คานขวาง) */}
+                        {F.y1.on && <rect x={CX - (F.y1.w * s) / 2} y={CY - hh - stub} width={F.y1.w * s} height={stub} fill={fillOf(F.y1)} stroke={colOf(F.y1)} strokeWidth="1.6" />}
+                        {F.y2.on && <rect x={CX - (F.y2.w * s) / 2} y={CY + hh} width={F.y2.w * s} height={stub} fill={fillOf(F.y2)} stroke={colOf(F.y2)} strokeWidth="1.6" />}
+
+                        {/* หน้าตัดเสา */}
+                        <rect x={CX - hw} y={CY - hh} width={hw * 2} height={hh * 2} fill="#f1f5f9" stroke="#334155" strokeWidth="2" />
+                        {/* พื้นที่ต้านแรงเฉือนประสิทธิผล Aj */}
+                        <rect x={CX - hw} y={CY + ey - (r.bjUsed * s) / 2} width={hw * 2} height={r.bjUsed * s}
+                              fill="url(#ajHatch)" stroke="#1d4ed8" strokeWidth="1.8" strokeDasharray="4 2" />
+
+                        {/* ทิศทางแรงเฉือนในข้อต่อ */}
+                        <line x1={CX - hw - 6} y1={CY - hh - 12} x2={CX + hw + 6} y2={CY - hh - 12} stroke="#dc2626" strokeWidth="1.6" markerEnd="url(#arw)" />
+                        <text x={CX} y={CY - hh - 17} textAnchor="middle" fontSize="10" fill="#dc2626">ทิศทางแรงเฉือนที่พิจารณา</text>
+
+                        {/* ป้ายกำกับ */}
+                        <text x={CX} y={CY + hh + 14} textAnchor="middle" fontSize="10" fill="#334155">h = {r.hJoint} cm</text>
+                        <text x={CX - hw - 8} y={CY} textAnchor="end" fontSize="10" fill="#334155">b<tspan baselineShift="sub" fontSize="7">c</tspan> = {r.cPerp}</text>
+                        <text x={CX + hw + 8} y={CY + ey + 4} fontSize="10" fill="#1d4ed8">b<tspan baselineShift="sub" fontSize="7">j</tspan> = {r.bjUsed.toFixed(1)}</text>
+                        <text x={8} y={258} fontSize="9" fill="#059669">■ คานที่ยึดรัดได้ (ผ่านเกณฑ์ 3/4)</text>
+                        <text x={186} y={258} fontSize="9" fill="#d97706">■ คานที่ไม่นับเป็นการยึดรัด</text>
+                    </svg>
+                );
+            };
 
             return (
                 <div className="min-h-screen pb-12 print:pb-0 print:bg-white">
@@ -388,6 +568,123 @@
                             </div>
                         </div>
 
+                        {/* --- Section 1B: Beam Geometry & Joint Classification --- */}
+                        <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden mb-6 print:shadow-none print:border-none print:mb-2 print:break-inside-avoid">
+                            <div className="bg-emerald-50 border-b border-emerald-100 px-6 py-3 print:bg-transparent print:border-b-2 print:border-slate-800 print:px-0 print:py-1">
+                                <h2 className="font-bold text-emerald-800 flex items-center gap-2 print:text-slate-800 print:text-sm">
+                                    <svg className="w-5 h-5 print:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8h16M4 16h16M8 4v16M16 4v16"></path></svg>
+                                    ขนาดคานที่เข้ามาบรรจบ และการจำแนกประเภทข้อต่อ
+                                    <span className="text-xs font-normal text-emerald-700 print:text-gray-600">[มยผ. 1301/1302-61 ข้อ 5.2.7.5.3 และ รูปที่ 5.2-6, 5.2-7]</span>
+                                </h2>
+                            </div>
+
+                            <div className="p-6 grid grid-cols-1 lg:grid-cols-3 print:grid-cols-3 gap-6 print:gap-3 print:px-0 print:py-2">
+                                {/* ตารางกรอกขนาดคาน */}
+                                <div className="lg:col-span-2 print:col-span-2">
+                                    <div className="overflow-x-auto print:overflow-visible">
+                                        <table className="min-w-full text-sm print:text-[10px]">
+                                            <thead>
+                                                <tr className="text-gray-500 border-b">
+                                                    <th className="text-left font-medium py-2 print:py-1">ด้านของข้อต่อ</th>
+                                                    <th className="text-center font-medium py-2 print:py-1">มีคาน</th>
+                                                    <th className="text-center font-medium py-2 print:py-1">กว้าง b<sub>b</sub> (cm)</th>
+                                                    <th className="text-center font-medium py-2 print:py-1">ลึก h<sub>b</sub> (cm)</th>
+                                                    <th className="text-center font-medium py-2 print:py-1">ต้องการ<br className="print:hidden" /> b<sub>b</sub> &ge; 0.75b<sub>col</sub></th>
+                                                    <th className="text-center font-medium py-2 print:py-1">ต้องการ<br className="print:hidden" /> h<sub>b</sub> &ge; 0.75h<sub>b,max</sub></th>
+                                                    <th className="text-center font-medium py-2 print:py-1">นับเป็นการยึดรัด</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {results.faceResults.map(f => (
+                                                    <tr key={f.key} className={f.on ? '' : 'opacity-45'}>
+                                                        <td className="py-2 print:py-1">
+                                                            <div className="font-medium text-gray-800">{f.label}</div>
+                                                            <div className="text-[10px] print:text-[8px] text-gray-500">{f.note}</div>
+                                                        </td>
+                                                        <td className="text-center py-2 print:py-1">
+                                                            <input type="checkbox" checked={f.on} onChange={(e) => updateBeam(f.key, 'on', e.target.checked)} className="w-4 h-4 accent-emerald-600 cursor-pointer" />
+                                                        </td>
+                                                        <td className="py-2 print:py-1 px-1">
+                                                            <input type="number" value={inputs.beams[f.key].w} disabled={!f.on} onChange={(e) => updateBeam(f.key, 'w', e.target.value)} className="w-20 print:w-12 text-center px-2 py-1 print:py-0 print:px-0.5 print:text-[10px] border rounded-md disabled:bg-gray-100 outline-none focus:ring-emerald-500 focus:border-emerald-500" />
+                                                        </td>
+                                                        <td className="py-2 print:py-1 px-1">
+                                                            <input type="number" value={inputs.beams[f.key].d} disabled={!f.on} onChange={(e) => updateBeam(f.key, 'd', e.target.value)} className="w-20 print:w-12 text-center px-2 py-1 print:py-0 print:px-0.5 print:text-[10px] border rounded-md disabled:bg-gray-100 outline-none focus:ring-emerald-500 focus:border-emerald-500" />
+                                                        </td>
+                                                        <td className={`text-center py-2 print:py-1 font-mono ${f.on ? (f.okW ? 'text-green-600' : 'text-red-600') : 'text-gray-400'}`}>
+                                                            {f.reqWidth.toFixed(1)}{f.on ? (f.okW ? ' ✓' : ' ✗') : ''}
+                                                        </td>
+                                                        <td className={`text-center py-2 print:py-1 font-mono ${f.on ? (f.okD ? 'text-green-600' : 'text-red-600') : 'text-gray-400'}`}>
+                                                            {f.reqDepth.toFixed(1)}{f.on ? (f.okD ? ' ✓' : ' ✗') : ''}
+                                                        </td>
+                                                        <td className="text-center py-2 print:py-1">
+                                                            <span className={`inline-block px-2 py-0.5 rounded-full text-[11px] print:text-[9px] font-medium ${f.confining ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}`}>
+                                                                {f.confining ? 'ยึดรัด' : (f.on ? 'ไม่นับ' : 'ไม่มีคาน')}
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-3 print:grid-cols-3 gap-3 mt-4 print:mt-2">
+                                        <div>
+                                            <label className="block text-xs print:text-[10px] text-gray-600 mb-1 print:mb-0.5">เยื้องศูนย์คานแกน X, e (cm)</label>
+                                            <input type="number" name="beamEcc" value={inputs.beamEcc} onChange={handleInputChange} className="w-full px-3 py-2 print:px-2 print:py-1 print:text-xs border rounded-md outline-none focus:ring-emerald-500 focus:border-emerald-500" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs print:text-[10px] text-gray-600 mb-1 print:mb-0.5">วิธีคิดพื้นที่ข้อต่อ A<sub>j</sub></label>
+                                            <select name="ajMethod" value={inputs.ajMethod} onChange={(e) => setInputs(p => ({ ...p, ajMethod: e.target.value }))} className="w-full px-3 py-2 print:px-2 print:py-1 print:text-xs border rounded-md outline-none focus:ring-emerald-500 focus:border-emerald-500">
+                                                <option value="fig">bj ตามรูปที่ 5.2-7 (แนะนำ)</option>
+                                                <option value="full">bc × h เต็มหน้าตัดเสา</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs print:text-[10px] text-gray-600 mb-1 print:mb-0.5">c<sub>1</sub> ใน A<sub>v,min</sub> (สมการ 5.2-6)</label>
+                                            <select name="c1Mode" value={inputs.c1Mode} onChange={(e) => setInputs(p => ({ ...p, c1Mode: e.target.value }))} className="w-full px-3 py-2 print:px-2 print:py-1 print:text-xs border rounded-md outline-none focus:ring-emerald-500 focus:border-emerald-500">
+                                                <option value="max">ด้านที่มากกว่า (ปลอดภัยกว่า)</option>
+                                                <option value="h">h (ขนานทิศแรงเฉือน)</option>
+                                                <option value="b">bc (ตั้งฉากทิศแรงเฉือน)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* รูปด้านบนของข้อต่อ */}
+                                <div className="border border-gray-200 rounded-lg p-3 bg-gray-50 print:bg-transparent print:border-gray-300">
+                                    <p className="text-xs print:text-[10px] font-semibold text-gray-500 uppercase mb-1">รูปด้านบน (Plan) ตามสัดส่วนจริง</p>
+                                    <div className="print:max-w-[210px] print:mx-auto"><JointPlanView /></div>
+                                </div>
+                            </div>
+
+                            {/* แถบสรุปการจำแนก */}
+                            <div className={`px-6 py-4 print:px-0 print:py-2 border-t ${results.jointClass === 'ก' ? 'bg-green-50 border-green-200' : results.jointClass === 'ข' ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'} print:bg-transparent print:border-gray-300`}>
+                                <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                                    <div>
+                                        <p className="text-xs print:text-[10px] text-gray-600">ผลการจำแนกอัตโนมัติ [รูปที่ 5.2-6]</p>
+                                        <p className="text-lg print:text-sm font-bold text-gray-800">({results.jointClass}) {results.jointTitle}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs print:text-[10px] text-gray-600">จำนวนด้านที่นับเป็นการยึดรัด</p>
+                                        <p className="text-lg print:text-sm font-bold text-gray-800">{results.nConfining} จาก {results.nPresent} ด้านที่มีคาน</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs print:text-[10px] text-gray-600">กำลังต้านแรงเฉือนระบุที่ใช้</p>
+                                        <p className="text-lg print:text-sm font-bold math-font text-blue-700">V<sub>n</sub> = {results.jointCoef.toFixed(1)} &radic;f'<sub>c</sub> A<sub>j</sub></p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs print:text-[10px] text-gray-600">รูปแบบแรงเฉือนที่ใช้</p>
+                                        <p className="text-lg print:text-sm font-bold text-gray-800">{results.isInterior ? 'ข้อต่อภายใน (คาน 2 ด้าน)' : 'ข้อต่อภายนอก (คานด้านเดียว)'}</p>
+                                    </div>
+                                </div>
+                                {results.warnings.length > 0 && (
+                                    <ul className="mt-3 print:mt-1 space-y-1 text-xs print:text-[10px] text-red-700 list-disc list-inside">
+                                        {results.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                                    </ul>
+                                )}
+                            </div>
+                        </div>
+
                         {/* --- Section 2 & 3: Tabs and Contents --- */}
                         <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden print:shadow-none print:border-none print:overflow-visible">
                             {/* Tabs Header */}
@@ -403,45 +700,73 @@
                             <div className="p-6 bg-gray-50/50 print:p-0 print:bg-transparent">
                                 
                                 {/* 1. Summary Content (หน้า 1 พร้อมข้อมูลนำเข้า) */}
-                                <div className={`${activeTab === 'summary' ? 'block' : 'hidden'} print:block print:mb-2 print:break-inside-avoid`}>
+                                <div className={`${activeTab === 'summary' ? 'block' : 'hidden'} print:block print:mb-2 print:break-before-page print:pt-4`}>
                                     <div className="space-y-6 print:space-y-4">
                                         <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200 print:shadow-none print:border-none print:p-0">
-                                            <h3 className="text-lg print:text-base font-bold text-gray-800 mb-4 print:mb-2 border-b pb-2 print:border-slate-800">ตารางเปรียบเทียบกำลังรับแรงเฉือนในข้อต่อ</h3>
+                                            <h3 className="text-lg print:text-base font-bold text-gray-800 mb-4 print:mb-2 border-b pb-2 print:border-slate-800">ผลการตรวจสอบกำลังรับแรงเฉือนในข้อต่อ</h3>
+
+                                            {/* กล่องสรุปผลที่ควบคุมการออกแบบ */}
+                                            <div className={`mb-5 print:mb-3 rounded-lg border-2 p-4 print:p-3 ${results.jointPass ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50'} print:bg-transparent print:border print:border-gray-400`}>
+                                                <div className="grid grid-cols-2 md:grid-cols-5 print:grid-cols-5 gap-3 text-center">
+                                                    <div>
+                                                        <p className="text-[11px] print:text-[9px] text-gray-600">ประเภทข้อต่อ</p>
+                                                        <p className="text-base print:text-xs font-bold text-gray-800">({results.jointClass}) {results.jointCoef.toFixed(1)}&radic;f'<sub>c</sub>A<sub>j</sub></p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[11px] print:text-[9px] text-gray-600">A<sub>j</sub> (cm²)</p>
+                                                        <p className="text-base print:text-xs font-bold text-gray-800">{results.aj.toFixed(0)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[11px] print:text-[9px] text-gray-600">V<sub>j</sub> (Ton)</p>
+                                                        <p className="text-base print:text-xs font-bold text-red-600">{results.vjUsed.toFixed(2)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[11px] print:text-[9px] text-gray-600">&phi;V<sub>n</sub> (Ton)</p>
+                                                        <p className="text-base print:text-xs font-bold text-blue-600">{results.phiVnUsed.toFixed(2)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[11px] print:text-[9px] text-gray-600">V<sub>j</sub>/&phi;V<sub>n</sub></p>
+                                                        <p className={`text-base print:text-xs font-bold ${results.jointPass ? 'text-green-700' : 'text-red-700'}`}>{results.dcr.toFixed(3)}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="mt-3 print:mt-2 flex justify-center">
+                                                    <StatusBadge isPass={results.jointPass} />
+                                                </div>
+                                            </div>
+
+                                            <p className="text-xs print:text-[10px] text-gray-500 mb-2">
+                                                ตารางเปรียบเทียบทั้ง 3 ประเภท (คำนวณบน A<sub>j</sub> = {results.aj.toFixed(0)} cm² และ V<sub>j</sub> = {results.vjUsed.toFixed(2)} Ton เดียวกัน) — แถวที่ไฮไลต์คือประเภทที่จำแนกได้จากขนาดคานจริง
+                                            </p>
                                             <div className="overflow-x-auto print:overflow-visible">
                                                 <table className="min-w-full divide-y divide-gray-200 print:border print:border-gray-300">
                                                     <thead className="bg-gray-50 print:bg-gray-100">
                                                         <tr>
-                                                            <th className="px-6 py-3 print:px-4 print:py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider print:text-black print:border-b print:border-gray-300">ประเภทข้อต่อ (การยึดรั้ง)</th>
-                                                            <th className="px-6 py-3 print:px-4 print:py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider print:text-black print:border-b print:border-gray-300">แรงเฉือนที่เกิดขึ้น V<sub>j</sub> (Ton)</th>
-                                                            <th className="px-6 py-3 print:px-4 print:py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider print:text-black print:border-b print:border-gray-300">กำลังรับได้ &phi;V<sub>n</sub> (Ton)</th>
-                                                            <th className="px-6 py-3 print:px-4 print:py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider print:text-black print:border-b print:border-gray-300">สถานะการออกแบบ (V<sub>j</sub> &le; &phi;V<sub>n</sub>)</th>
+                                                            <th className="px-6 py-3 print:px-3 print:py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider print:text-black print:border-b print:border-gray-300">ประเภทข้อต่อ (การยึดรัด)</th>
+                                                            <th className="px-6 py-3 print:px-3 print:py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider print:text-black print:border-b print:border-gray-300">แรงเฉือนที่เกิดขึ้น V<sub>j</sub> (Ton)</th>
+                                                            <th className="px-6 py-3 print:px-3 print:py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider print:text-black print:border-b print:border-gray-300">กำลังรับได้ &phi;V<sub>n</sub> (Ton)</th>
+                                                            <th className="px-6 py-3 print:px-3 print:py-2 text-center text-xs font-medium text-gray-500 uppercase tracking-wider print:text-black print:border-b print:border-gray-300">สถานะการออกแบบ (V<sub>j</sub> &le; &phi;V<sub>n</sub>)</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody className="bg-white divide-y divide-gray-200 print:divide-gray-300">
-                                                        <tr>
-                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-gray-900">ยึดรั้งจากคาน 4 ด้าน (Interior)</td>
-                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-right font-medium text-red-600">{results.vjInt.toFixed(2)}</td>
-                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-right text-blue-600">{results.phiVn4.toFixed(2)}</td>
-                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-center">
-                                                                <StatusBadge isPass={results.vjInt <= results.phiVn4} />
-                                                            </td>
-                                                        </tr>
-                                                        <tr className="bg-gray-50 print:bg-white">
-                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-gray-900">ยึดรั้งจากคาน 2-3 ด้าน (Exterior)</td>
-                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-right font-medium text-red-600">{results.vjInt.toFixed(2)}</td>
-                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-right text-blue-600">{results.phiVn3.toFixed(2)}</td>
-                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-center">
-                                                                <StatusBadge isPass={results.vjInt <= results.phiVn3} />
-                                                            </td>
-                                                        </tr>
-                                                        <tr>
-                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-gray-900">ข้อต่ออื่นๆ (Corner/Roof)</td>
-                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-right font-medium text-red-600">{results.vjExt.toFixed(2)}</td>
-                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-right text-blue-600">{results.phiVnOther.toFixed(2)}</td>
-                                                            <td className="px-6 py-4 print:px-4 print:py-2 whitespace-nowrap text-sm text-center">
-                                                                <StatusBadge isPass={results.vjExt <= results.phiVnOther} />
-                                                            </td>
-                                                        </tr>
+                                                        {[
+                                                            { cls: 'ก', name: '(ก) ยึดรัดจากคานทั้ง 4 ด้าน', cap: results.phiVn4 },
+                                                            { cls: 'ข', name: '(ข) ยึดรัดจากคาน 3 ด้าน หรือ 2 ด้านตรงข้าม', cap: results.phiVn3 },
+                                                            { cls: 'ค', name: '(ค) ข้อต่ออื่น ๆ', cap: results.phiVnOther }
+                                                        ].map(row => {
+                                                            const isGov = row.cls === results.jointClass;
+                                                            return (
+                                                                <tr key={row.cls} className={isGov ? 'bg-blue-50 print:bg-gray-100 font-semibold' : 'text-gray-400 print:text-gray-500'}>
+                                                                    <td className="px-6 py-4 print:px-3 print:py-2 whitespace-nowrap text-sm print:text-xs">
+                                                                        {row.name}{isGov && <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-blue-600 text-white print:bg-transparent print:text-black print:border print:border-gray-500">ใช้ควบคุม</span>}
+                                                                    </td>
+                                                                    <td className="px-6 py-4 print:px-3 print:py-2 whitespace-nowrap text-sm print:text-xs text-right">{results.vjUsed.toFixed(2)}</td>
+                                                                    <td className="px-6 py-4 print:px-3 print:py-2 whitespace-nowrap text-sm print:text-xs text-right">{row.cap.toFixed(2)}</td>
+                                                                    <td className="px-6 py-4 print:px-3 print:py-2 whitespace-nowrap text-sm text-center">
+                                                                        {isGov ? <StatusBadge isPass={results.vjUsed <= row.cap} /> : <span className="text-xs">{results.vjUsed <= row.cap ? 'ผ่าน' : 'ไม่ผ่าน'}</span>}
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        })}
                                                     </tbody>
                                                 </table>
                                             </div>
@@ -475,7 +800,9 @@
                                                 แรงเฉือนข้อต่อภายใน (Interior / Continuous Joint)
                                                 <span className="text-sm font-normal text-blue-600 ml-2 print:text-gray-600">[มยผ. 1301/1302-61 ข้อ 5.2.7.5.1]</span>
                                             </h3>
-                                            <p className="text-sm text-gray-500 mb-4">* นำไปเปรียบเทียบกับข้อต่อแบบยึดรั้ง 4 ด้าน และ 2-3 ด้าน</p>
+                                            <p className={`text-sm mb-4 ${results.isInterior ? 'text-green-700 font-semibold' : 'text-gray-400'}`}>
+                                                {results.isInterior ? '● ใช้กรณีนี้ — มีคานเข้าบรรจบทั้งสองด้านในทิศทางแรงเฉือน (X+ และ X−)' : '○ ไม่ใช้กรณีนี้ — ไม่มีคานเข้าบรรจบครบทั้งสองด้านในทิศทางแรงเฉือน'}
+                                            </p>
                                             
                                             <div className="bg-yellow-50 p-4 rounded-md mb-6 border border-yellow-200 text-center print:border-gray-300">
                                                 <p className="text-xl font-bold text-yellow-800 math-font">
@@ -508,7 +835,9 @@
                                                 แรงเฉือนข้อต่อภายนอก (Exterior / Corner / Roof Joint)
                                                 <span className="text-sm font-normal text-blue-600 ml-2 print:text-gray-600">[มยผ. 1301/1302-61 ข้อ 5.2.7.5.2]</span>
                                             </h3>
-                                            <p className="text-sm text-gray-500 mb-4">* นำไปเปรียบเทียบกับข้อต่ออื่นๆ (Corner/Roof)</p>
+                                            <p className={`text-sm mb-4 ${!results.isInterior ? 'text-green-700 font-semibold' : 'text-gray-400'}`}>
+                                                {!results.isInterior ? '● ใช้กรณีนี้ — มีคานเข้าบรรจบเพียงด้านเดียวในทิศทางแรงเฉือน' : '○ ไม่ใช้กรณีนี้ — เป็นข้อต่อภายในในทิศทางแรงเฉือน'}
+                                            </p>
                                             
                                             <div className="bg-blue-50 p-4 rounded-md mb-6 border border-blue-200 text-center print:border-gray-300">
                                                 <p className="text-xl font-bold text-blue-800 math-font">
@@ -541,15 +870,35 @@
                                             <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2 print:border-slate-800">การคำนวณกำลังรับแรงเฉือนระบุ (V<sub>n</sub>)</h3>
                                             
                                             <div className="mb-6 bg-gray-50 p-4 rounded-md print:bg-transparent print:border print:border-gray-300">
-                                                <p className="mb-2"><strong>พื้นที่หน้าตัดข้อต่อ (A<sub>j</sub>)</strong> = ความกว้าง(b) &times; ความลึก(h)</p>
-                                                <p className="font-mono text-blue-600">A<sub>j</sub> = {inputs.colWidth} &times; {inputs.colDepth} = {results.aj.toFixed(2)} cm&sup2;</p>
+                                                <p className="mb-2 font-bold">พื้นที่ต้านแรงเฉือนประสิทธิผล (A<sub>j</sub>) = b<sub>j</sub> &times; h <span className="text-sm font-normal text-blue-600 print:text-gray-600">[รูปที่ 5.2-7]</span></p>
+                                                <ul className="text-sm space-y-1 mb-3 list-disc list-inside text-gray-700">
+                                                    <li>ความลึกข้อต่อ h = ด้านเสาที่ขนานทิศทางแรงเฉือน = <strong>{results.hJoint} cm</strong></li>
+                                                    <li>ความกว้างคานที่ก่อให้เกิดแรงเฉือน b = <strong>{results.bBeam} cm</strong> (ใช้ค่าน้อยสุดของคานแกน X ที่มี)</li>
+                                                    <li>ระยะจากขอบคานถึงขอบเสา: x<sub>1</sub> = <strong>{results.x1.toFixed(2)} cm</strong>, x<sub>2</sub> = <strong>{results.x2.toFixed(2)} cm</strong> (เยื้องศูนย์ e = {inputs.beamEcc} cm)</li>
+                                                </ul>
+                                                <div className="bg-white rounded border border-gray-200 p-3 print:border-gray-300">
+                                                    <p className="font-mono text-sm mb-1">b<sub>j</sub> = min( b<sub>c</sub> , b + h , b + 2x<sub>1</sub> )</p>
+                                                    <p className="font-mono text-sm mb-1">
+                                                        b<sub>j</sub> = min( {results.bjCandidates.colLimit.toFixed(2)} , {results.bjCandidates.bPlusH.toFixed(2)} , {results.bjCandidates.bPlus2x1.toFixed(2)} ) = <strong className="text-blue-600">{results.bjFig.toFixed(2)} cm</strong>
+                                                    </p>
+                                                    <p className="font-mono text-blue-600 mt-2">
+                                                        A<sub>j</sub> = {results.bjUsed.toFixed(2)} &times; {results.hJoint} = {results.aj.toFixed(2)} cm&sup2;
+                                                        <span className="text-gray-500 ml-2">({inputs.ajMethod === 'fig' ? 'ตามรูปที่ 5.2-7' : 'ใช้เต็มหน้าตัดเสา b×h'})</span>
+                                                    </p>
+                                                    {Math.abs(results.ajFull - results.ajFig) > 0.01 && (
+                                                        <p className="text-xs text-amber-700 mt-2">
+                                                            เปรียบเทียบ: ถ้าใช้เต็มหน้าตัดเสา b<sub>c</sub>&times;h = {results.ajFull.toFixed(2)} cm² &rarr; วิธีตามรูปที่ 5.2-7 ให้ค่าน้อยกว่า {((1 - results.ajFig / results.ajFull) * 100).toFixed(1)}% (การใช้เต็มหน้าตัดจะไม่ปลอดภัย)
+                                                        </p>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
 
                                         <div className="space-y-6">
                                             <div className="border border-gray-200 rounded-lg p-4 print:border-gray-300 print:break-inside-avoid">
                                                 <h4 className="font-bold text-gray-700 mb-2">
-                                                    1. ข้อต่อได้รับการยึดรั้ง 4 ด้าน (Interior Joint)
+                                                    1. ข้อต่อที่ได้รับการยึดรัดจากคานทั้ง 4 ด้าน
+                                                    {results.jointClass === 'ก' && <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-blue-600 text-white align-middle print:bg-transparent print:text-black print:border print:border-gray-500">ประเภทที่จำแนกได้</span>}
                                                     <span className="text-sm font-normal text-blue-600 ml-2 print:text-gray-600">[มยผ. 1301/1302-61 ข้อ 5.2.7.5.3 (1)]</span>
                                                 </h4>
                                                 <p className="math-font text-lg text-center bg-yellow-50 p-2 rounded mb-2 print:border print:border-gray-200">V<sub>n</sub> = 5.4 &radic;f'<sub>c</sub> A<sub>j</sub></p>
@@ -562,7 +911,8 @@
 
                                             <div className="border border-gray-200 rounded-lg p-4 print:border-gray-300 print:break-inside-avoid">
                                                 <h4 className="font-bold text-gray-700 mb-2">
-                                                    2. ข้อต่อได้รับการยึดรั้ง 2 หรือ 3 ด้าน (Exterior Joint)
+                                                    2. ข้อต่อที่ได้รับการยึดรัดจากคาน 3 ด้าน หรือคาน 2 ด้านที่อยู่ตรงข้ามกัน
+                                                    {results.jointClass === 'ข' && <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-blue-600 text-white align-middle print:bg-transparent print:text-black print:border print:border-gray-500">ประเภทที่จำแนกได้</span>}
                                                     <span className="text-sm font-normal text-blue-600 ml-2 print:text-gray-600">[มยผ. 1301/1302-61 ข้อ 5.2.7.5.3 (2)]</span>
                                                 </h4>
                                                 <p className="math-font text-lg text-center bg-yellow-50 p-2 rounded mb-2 print:border print:border-gray-200">V<sub>n</sub> = 4.0 &radic;f'<sub>c</sub> A<sub>j</sub></p>
@@ -575,7 +925,8 @@
 
                                             <div className="border border-gray-200 rounded-lg p-4 print:border-gray-300 print:break-inside-avoid">
                                                 <h4 className="font-bold text-gray-700 mb-2">
-                                                    3. ข้อต่ออื่นๆ (Corner / Roof Joint)
+                                                    3. ข้อต่ออื่น ๆ
+                                                    {results.jointClass === 'ค' && <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-blue-600 text-white align-middle print:bg-transparent print:text-black print:border print:border-gray-500">ประเภทที่จำแนกได้</span>}
                                                     <span className="text-sm font-normal text-blue-600 ml-2 print:text-gray-600">[มยผ. 1301/1302-61 ข้อ 5.2.7.5.3 (3)]</span>
                                                 </h4>
                                                 <p className="math-font text-lg text-center bg-yellow-50 p-2 rounded mb-2 print:border print:border-gray-200">V<sub>n</sub> = 3.2 &radic;f'<sub>c</sub> A<sub>j</sub></p>
@@ -599,7 +950,7 @@
                                         
                                         <div className="bg-slate-800 text-white p-4 rounded-md mb-6 text-center print:bg-white print:text-black print:border print:border-gray-300">
                                             <p className="text-xl math-font">
-                                                A<sub>v,min</sub> = 3.5 (b<sub>w</sub> &times; s) / f<sub>yt</sub>
+                                                A<sub>v,min</sub> = 3.5 (c<sub>1</sub> &times; s) / f<sub>yt</sub>
                                             </p>
                                         </div>
 
@@ -607,12 +958,12 @@
                                             <div className="border p-4 rounded-lg bg-gray-50 print:bg-transparent">
                                                 <h4 className="font-bold text-gray-700 mb-4 text-center">ความต้องการขั้นต่ำ</h4>
                                                 <ul className="space-y-2 text-sm mb-4">
-                                                    <li>b<sub>w</sub> (min(b, h)) = {results.bw} cm</li>
+                                                    <li>c<sub>1</sub> (ขนาดด้านเสา) = {results.c1} cm <span className="text-gray-500">[{inputs.c1Mode === 'max' ? 'ด้านที่มากกว่า' : inputs.c1Mode === 'h' ? 'h ขนานทิศแรงเฉือน' : 'b ตั้งฉากทิศแรงเฉือน'}]</span></li>
                                                     <li>s (ระยะห่างเหล็กปลอก) = {inputs.tieSpacing} cm</li>
                                                     <li>f<sub>yt</sub> (กำลังครากเหล็กปลอก) = {inputs.fyt} ksc</li>
                                                 </ul>
                                                 <div className="border-t pt-2 text-center">
-                                                    <p className="text-gray-600 text-sm">A<sub>v,min</sub> = 3.5 &times; ({results.bw} &times; {inputs.tieSpacing}) / {inputs.fyt}</p>
+                                                    <p className="text-gray-600 text-sm">A<sub>v,min</sub> = 3.5 &times; ({results.c1} &times; {inputs.tieSpacing}) / {inputs.fyt}</p>
                                                     <p className="text-xl font-bold text-red-600 mt-2">{results.avMin.toFixed(2)} cm&sup2;</p>
                                                 </div>
                                             </div>
@@ -631,6 +982,17 @@
                                             </div>
                                         </div>
                                         
+                                        <div className="mt-6 print:mt-4 border border-gray-200 rounded-lg p-4 bg-amber-50 print:bg-transparent print:border-gray-300">
+                                            <h4 className="font-bold text-gray-700 mb-2">ความลึกที่ต้องเสริมเหล็กปลอกภายในเสา <span className="text-sm font-normal text-blue-600 print:text-gray-600">[ข้อ 5.2.7.4.4 ย่อหน้าท้าย]</span></h4>
+                                            <p className="text-sm text-gray-700">
+                                                &ldquo;เหล็กเสริมนี้จะต้องเสริมภายในเสาเป็นความลึกไม่น้อยกว่าความลึกของคานที่ลึกที่สุดที่ข้อต่อนั้น&rdquo;
+                                            </p>
+                                            <p className="mt-2 font-mono text-sm">
+                                                h<sub>b,max</sub> = <strong className="text-blue-600">{results.tieDepthReq.toFixed(0)} cm</strong> &rarr; ต้องเรียงปลอก {inputs.tieLegs}-RB{inputs.tieSize} @{inputs.tieSpacing} cm ตลอดความลึกข้อต่ออย่างน้อย {results.tieDepthReq.toFixed(0)} cm
+                                                {inputs.tieSpacing > 0 && <span className="text-gray-600"> (&asymp; {Math.floor(results.tieDepthReq / inputs.tieSpacing) + 1} เส้น)</span>}
+                                            </p>
+                                        </div>
+
                                         <div className="mt-6 flex justify-center print:mt-4">
                                              <div className={`flex items-center gap-2 px-6 py-3 rounded-full font-bold text-lg ${results.avProv >= results.avMin ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'} print:border print:border-gray-300 print:bg-transparent`}>
                                                 {results.avProv >= results.avMin ? <IconCheck /> : <IconCross />}
@@ -650,7 +1012,12 @@
                                                 <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">f'<sub>c</sub></span><span>= กำลังอัดประลัยของคอนกรีต (ksc)</span></div>
                                                 <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">f<sub>y</sub></span><span>= กำลังครากของเหล็กเสริมหลักในคาน (ksc)</span></div>
                                                 <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">f<sub>yt</sub></span><span>= กำลังครากของเหล็กปลอก (ksc)</span></div>
-                                                <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">b, h</span><span>= ความกว้าง และความลึกของเสา (cm)</span></div>
+                                                <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">h</span><span>= ด้านเสาที่ขนานทิศทางแรงเฉือน = ความลึกข้อต่อ (cm)</span></div>
+                                                <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">b<sub>c</sub></span><span>= ด้านเสาที่ตั้งฉากทิศทางแรงเฉือน (cm)</span></div>
+                                                <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">b<sub>b</sub>, h<sub>b</sub></span><span>= ความกว้าง และความลึกของคานที่เข้ามาบรรจบ (cm)</span></div>
+                                                <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">b<sub>j</sub></span><span>= ความกว้างประสิทธิผลของข้อต่อ ตามรูปที่ 5.2-7 (cm)</span></div>
+                                                <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">x<sub>1</sub></span><span>= ระยะจากขอบคานถึงขอบเสา ด้านที่น้อยกว่า (cm)</span></div>
+                                                <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">c<sub>1</sub></span><span>= ขนาดด้านหน้าตัดเสาที่ใช้ในสมการ 5.2-6 (cm)</span></div>
                                                 <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">A<sub>s1</sub></span><span>= พื้นที่หน้าตัดรวมเหล็กเสริมบน (cm&sup2;)</span></div>
                                                 <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">A<sub>s2</sub></span><span>= พื้นที่หน้าตัดรวมเหล็กเสริมล่าง (cm&sup2;)</span></div>
                                                 <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">V<sub>col</sub></span><span>= แรงเฉือนในเสาที่ระดับข้อต่อ (Ton)</span></div>
@@ -658,7 +1025,7 @@
                                                 <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">V<sub>j</sub></span><span>= แรงเฉือนที่เกิดขึ้นในข้อต่อ (Ton)</span></div>
                                                 <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">V<sub>n</sub></span><span>= กำลังต้านแรงเฉือนระบุของข้อต่อ (Ton)</span></div>
                                                 <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">&phi;</span><span>= ตัวคูณลดกำลังของข้อต่อ (0.85)</span></div>
-                                                <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">A<sub>v,min</sub></span><span>= ปริมาณเหล็กปลอกขั้นต่ำ (cm&sup2;)</span></div>
+                                                <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">A<sub>v,min</sub></span><span>= ปริมาณเหล็กปลอกขั้นต่ำต่อระยะ s (cm&sup2;)</span></div>
                                                 <div className="flex items-start gap-2"><span className="math-font font-bold w-12 shrink-0">s</span><span>= ระยะเรียงของเหล็กปลอก (cm)</span></div>
                                             </div>
                                         </div>
@@ -666,9 +1033,21 @@
                                         {/* Section: Joint Types Diagram */}
                                         <div className="print:break-inside-avoid">
                                             <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2 print:border-slate-800">รูปแบบข้อต่อ (Joint Types) <span className="text-sm font-normal text-blue-600">[อ้างอิง มยผ. รูปที่ 5.2-6]</span></h3>
+                                            <div className="mb-4 bg-blue-50 border border-blue-200 rounded-md p-4 print:bg-transparent print:border-gray-300">
+                                                <p className="text-sm font-bold text-blue-900 mb-2">เกณฑ์การนับว่า &ldquo;ข้อต่อได้รับการยึดรัดจากคาน&rdquo; [ข้อ 5.2.7.5.3 ย่อหน้าท้าย]</p>
+                                                <p className="text-sm text-gray-700 mb-2">
+                                                    &ldquo;จะถือว่าข้อต่อได้รับการยึดรัดจากคานก็ต่อเมื่อคานที่เข้ามายึดรัดนั้นมีความกว้างไม่น้อยกว่าสามในสี่ของความกว้างเสาด้านที่คานเข้ามาบรรจบ
+                                                    และมีความลึกไม่น้อยกว่าสามในสี่ของความลึกคานตัวที่ลึกที่สุดที่เข้ามาบรรจบกันที่ข้อต่อ&rdquo;
+                                                </p>
+                                                <ul className="text-sm text-gray-800 list-disc list-inside space-y-1">
+                                                    <li>เงื่อนไขความกว้าง: b<sub>b</sub> &ge; 0.75 &times; ความกว้างเสาด้านที่คานนั้นบรรจบ</li>
+                                                    <li>เงื่อนไขความลึก: h<sub>b</sub> &ge; 0.75 &times; h<sub>b,max</sub> โดย h<sub>b,max</sub> = ความลึกคานที่ลึกที่สุดที่ข้อต่อ = {results.maxBeamDepth.toFixed(0)} cm</li>
+                                                    <li>คานที่ไม่ผ่านเงื่อนไขใดเงื่อนไขหนึ่ง จะ<strong>ไม่ถูกนับ</strong>เป็นด้านที่ให้การยึดรัด (แต่ยังคงส่งแรงเข้าข้อต่อตามปกติ)</li>
+                                                </ul>
+                                            </div>
                                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                                 {/* Type 1: 4 Sides */}
-                                                <div className="border border-gray-200 rounded-lg p-4 flex flex-col items-center text-center bg-gray-50 print:bg-transparent print:border-gray-300">
+                                                <div className={`border-2 rounded-lg p-4 flex flex-col items-center text-center print:bg-transparent print:border-gray-300 ${results.jointClass === 'ก' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-gray-50'}`}>
                                                     <div className="h-32 flex items-center justify-center mb-4">
                                                         <svg viewBox="0 0 100 100" className="w-24 h-24">
                                                             <defs>
@@ -689,7 +1068,7 @@
                                                 </div>
 
                                                 {/* Type 2: 3 Sides / 2 Opposite */}
-                                                <div className="border border-gray-200 rounded-lg p-4 flex flex-col items-center text-center bg-gray-50 print:bg-transparent print:border-gray-300">
+                                                <div className={`border-2 rounded-lg p-4 flex flex-col items-center text-center print:bg-transparent print:border-gray-300 ${results.jointClass === 'ข' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-gray-50'}`}>
                                                     <div className="h-32 flex items-center justify-center mb-4">
                                                         <svg viewBox="0 0 100 100" className="w-24 h-24">
                                                             <defs>
@@ -709,7 +1088,7 @@
                                                 </div>
 
                                                 {/* Type 3: Other */}
-                                                <div className="border border-gray-200 rounded-lg p-4 flex flex-col items-center text-center bg-gray-50 print:bg-transparent print:border-gray-300">
+                                                <div className={`border-2 rounded-lg p-4 flex flex-col items-center text-center print:bg-transparent print:border-gray-300 ${results.jointClass === 'ค' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-gray-50'}`}>
                                                     <div className="h-32 flex items-center justify-center mb-4">
                                                         <svg viewBox="0 0 100 100" className="w-24 h-24">
                                                             <defs>
